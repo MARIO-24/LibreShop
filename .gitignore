@@ -1,0 +1,16 @@
+# Dependencias Node / React prototipo original
+node_modules/
+dist/
+.vite/
+
+# Archivos de configuración local y credenciales
+.env
+.env.local
+config/database.local.php
+
+# Sistema operativo e IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
