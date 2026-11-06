@@ -8,7 +8,7 @@ require_once __DIR__ . '/includes/Sesiones.php';
  * Rechaza peticiones GET y peticiones POST sin un token CSRF válido.
  */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-    establecerFlash('error', 'Operación no permitida: utiliza el botón «Salir» para cerrar tu sesión.');
+    establecerFlash('error', 'Operación no permitida: utiliza el botón «Cerrar sesión» para salir de tu cuenta.');
     header('Location: index.php');
     exit;
 }

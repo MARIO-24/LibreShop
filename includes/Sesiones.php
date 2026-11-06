@@ -152,28 +152,18 @@ function iniciarSesionUsuario(array $usuario): void
 }
 
 /**
- * Cierra la sesión actual del usuario limpiando datos y cookies de sesión.
+ * Cierra la sesión actual del usuario destruyendo los datos de autenticación
+ * y regenerando el identificador de sesión para evitar reutilización.
  */
 function cerrarSesionUsuario(): void
 {
-    unset($_SESSION['usuario'], $_SESSION['url_retorno']);
+    $_SESSION = [];
 
     if (session_status() === PHP_SESSION_ACTIVE) {
-        if (ini_get('session.use_cookies') && !headers_sent()) {
-            $params = session_get_cookie_params();
-            setcookie(
-                session_name(),
-                '',
-                time() - 42000,
-                $params['path'],
-                $params['domain'],
-                (bool) $params['secure'],
-                (bool) $params['httponly']
-            );
-        }
-
         if (!headers_sent()) {
             session_regenerate_id(true);
+        } else {
+            @session_destroy();
         }
     }
 
