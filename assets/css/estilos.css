@@ -155,17 +155,84 @@ table {
   display: flex;
   height: 40px;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   border-radius: 999px;
   padding-inline: 0.65rem;
   font-size: 0.8rem;
   font-weight: 650;
   color: #142943;
-  transition: background 0.2s;
+  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
 }
 
 .header-action:hover {
   background: #f1f5f9;
+  color: #1760dc;
+}
+
+.btn-logout {
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #142943;
+  transition: 0.2s;
+  white-space: nowrap;
+}
+
+.btn-logout:hover {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.btn-header-register {
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: #1760dc;
+  padding: 0 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #ffffff;
+  transition: 0.2s;
+  white-space: nowrap;
+}
+
+.btn-header-register:hover,
+.btn-header-register.active {
+  background: #114fb9;
+  color: #ffffff;
+}
+
+.btn-danger-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #dc2626;
+  transition: 0.2s;
+}
+
+.btn-danger-outline:hover {
+  border-color: #f87171;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .nav-link {
@@ -502,7 +569,9 @@ footer .text-\[\#142943\],
 .h-16 { height: 4rem; }
 .h-20 { height: 5rem; }
 .h-28 { height: 7rem; }
+.h-48 { height: 12rem; }
 .h-\[74px\] { height: 74px; }
+.min-h-0 { min-height: 0; }
 .h-\[400px\] { height: 400px; }
 .max-h-\[60vh\] { max-height: 60vh; }
 .max-h-\[90vh\] { max-height: 90vh; }
@@ -803,11 +872,15 @@ footer .text-\[\#142943\],
    ========================================================================== */
 
 @media (min-width: 640px) {
+  .sm\:inline { display: inline; }
+  .sm\:gap-2\.5 { gap: 0.625rem; }
   .sm\:gap-3 { gap: 0.75rem; }
   .sm\:gap-5 { gap: 1.25rem; }
   .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sm\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sm\:col-span-2 { grid-column: span 2 / span 2; }
+  .sm\:col-span-3 { grid-column: span 3 / span 3; }
 }
 
 @media (min-width: 768px) {
@@ -821,6 +894,7 @@ footer .text-\[\#142943\],
   .md\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
   .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .md\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .md\:grid-cols-\[150px_1fr\] { grid-template-columns: 150px 1fr; }
   .md\:grid-cols-\[1fr_110px_120px_100px_40px\] {
     grid-template-columns: 1fr 110px 120px 100px 40px;
   }
@@ -857,6 +931,17 @@ footer .text-\[\#142943\],
   }
   .book-cover strong {
     font-size: 14px;
+  }
+  .header-action {
+    padding-inline: 0.45rem;
+    font-size: 0.74rem;
+    height: 36px;
+  }
+  .btn-logout,
+  .btn-header-register {
+    height: 34px;
+    padding: 0 0.6rem;
+    font-size: 0.72rem;
   }
 }
 

@@ -43,6 +43,7 @@ function icono(string $nombre, int $tamano = 20, bool $relleno = false): string
         'plus'    => '<path d="M12 5v14M5 12h14" />',
         'box'     => '<path d="m4 7 8-4 8 4-8 4-8-4Z" /><path d="m4 7 0 10 8 4 8-4V7M12 11v10" />',
         'upload'  => '<path d="M12 16V4m-4 4 4-4 4 4" /><path d="M5 15v5h14v-5" />',
+        'logout'  => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />',
     ];
 
     $contenido = $trazos[$nombre] ?? '';
@@ -104,21 +105,13 @@ function renderizarPortada(array $producto, string $clasesExtra = '', string $ru
 
     if ($urlImagen !== '') {
         return sprintf(
-            '<div class="book-cover relative isolate overflow-hidden rounded-[3px] shadow-[8px_10px_22px_rgba(15,31,52,.22)] %s" style="background: linear-gradient(145deg, %s, %s)">
+            '<div class="book-cover relative isolate overflow-hidden rounded-[3px] bg-slate-100 shadow-[8px_10px_22px_rgba(15,31,52,.22)] %s">
                 <img src="%s" alt="Portada de %s" class="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-                <div class="absolute inset-y-0 left-0 w-[7%%] bg-black/25"></div>
-                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent p-2.5 text-white">
-                    <span class="block text-[7px] font-semibold uppercase tracking-[.18em] opacity-90">%s</span>
-                    <strong class="block truncate text-xs font-bold leading-tight">%s</strong>
-                </div>
+                <div class="absolute inset-y-0 left-0 w-[7%%] bg-black/20"></div>
             </div>',
             e($clasesExtra),
-            $color1,
-            $color2,
             e($urlImagen),
-            $titulo,
-            $autor,
-            $sello
+            $titulo
         );
     }
 

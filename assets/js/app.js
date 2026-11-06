@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 4. Previsualización en tiempo real de la portada en el formulario de producto
+    // 4. Previsualización en tiempo real de la portada y gestión dinámica de imagen/personalización
     const inputTitulo = document.getElementById('prod-titulo');
     const inputAutor = document.getElementById('prod-autor');
     const inputSello = document.getElementById('prod-sello');
@@ -71,9 +71,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const inputColor2 = document.getElementById('prod-color2');
     const inputArchivo = document.getElementById('prod-imagen-archivo');
     const textoArchivo = document.getElementById('nombre-archivo-portada');
+    const inputImagenActual = document.getElementById('input-imagen-actual');
+    const inputEliminarImagen = document.getElementById('input-eliminar-imagen');
+    const zonaSelectorImagen = document.getElementById('zona-selector-imagen');
+    const panelImagenActiva = document.getElementById('panel-imagen-activa');
+    const thumbImagenActiva = document.getElementById('thumb-imagen-activa');
+    const estadoImagenActiva = document.getElementById('estado-imagen-activa');
+    const nombreImagenActiva = document.getElementById('nombre-imagen-activa');
+    const btnCambiarImagen = document.getElementById('btn-cambiar-imagen');
+    const btnRetirarImagen = document.getElementById('btn-retirar-imagen');
+    const textoBtnCambiar = document.getElementById('texto-btn-cambiar');
+    const textoBtnRetirar = document.getElementById('texto-btn-retirar');
+    const seccionPersonalizacion = document.getElementById('seccion-personalizacion-cubierta');
+    const bloqueColores = document.getElementById('bloque-colores-cubierta');
+    const bloqueExtra = document.getElementById('bloque-personalizacion-extra');
+    const avisoImagen = document.getElementById('aviso-imagen-portada');
     const previewCover = document.getElementById('preview-book-cover');
+    const previewImg = document.getElementById('preview-book-img');
+    const previewEditorial = document.getElementById('preview-editorial-content');
     const previewAutor = document.getElementById('preview-book-autor');
     const previewSello = document.getElementById('preview-book-sello');
+    const previewBadge = document.getElementById('preview-modo-badge');
+
+    let urlObjetoTemporal = null;
+
+    const limpiarUrlTemporal = () => {
+        if (urlObjetoTemporal) {
+            URL.revokeObjectURL(urlObjetoTemporal);
+            urlObjetoTemporal = null;
+        }
+    };
 
     const actualizarPreview = () => {
         if (!previewCover) return;
@@ -91,17 +118,148 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const activarModoEditorial = () => {
+        if (seccionPersonalizacion) seccionPersonalizacion.classList.remove('hidden');
+        if (bloqueColores) bloqueColores.classList.remove('hidden');
+        if (bloqueExtra) bloqueExtra.classList.remove('hidden');
+
+        if (zonaSelectorImagen) zonaSelectorImagen.classList.remove('hidden');
+        if (panelImagenActiva) panelImagenActiva.classList.add('hidden');
+        if (textoArchivo) {
+            textoArchivo.textContent = 'Subir imagen de portada (JPG, PNG, WebP · máx. 3 MB)';
+        }
+
+        if (previewImg) {
+            previewImg.classList.add('hidden');
+            previewImg.removeAttribute('src');
+        }
+        if (previewEditorial) {
+            previewEditorial.classList.remove('hidden');
+        }
+        if (previewBadge) {
+            previewBadge.textContent = 'Cubierta editorial';
+            previewBadge.className = 'mt-2 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] bg-slate-100 text-slate-600';
+        }
+
+        actualizarPreview();
+    };
+
+    const activarModoImagen = (urlPreview, nombreMostrar, textoEstado, esGuardada) => {
+        if (seccionPersonalizacion) seccionPersonalizacion.classList.add('hidden');
+        if (bloqueColores) bloqueColores.classList.add('hidden');
+        if (bloqueExtra) bloqueExtra.classList.add('hidden');
+
+        if (zonaSelectorImagen) zonaSelectorImagen.classList.add('hidden');
+        if (panelImagenActiva) panelImagenActiva.classList.remove('hidden');
+
+        if (thumbImagenActiva && urlPreview) {
+            thumbImagenActiva.src = urlPreview;
+        }
+        if (estadoImagenActiva) {
+            estadoImagenActiva.textContent = textoEstado;
+        }
+        if (nombreImagenActiva) {
+            nombreImagenActiva.textContent = nombreMostrar;
+        }
+        if (textoBtnCambiar) {
+            textoBtnCambiar.textContent = esGuardada ? 'Sustituir imagen' : 'Cambiar imagen';
+        }
+        if (textoBtnRetirar) {
+            textoBtnRetirar.textContent = esGuardada ? 'Eliminar portada' : 'Retirar imagen';
+        }
+
+        if (previewImg && urlPreview) {
+            previewImg.src = urlPreview;
+            previewImg.classList.remove('hidden');
+        }
+        if (previewEditorial) {
+            previewEditorial.classList.add('hidden');
+        }
+        if (previewBadge) {
+            previewBadge.textContent = 'Imagen de portada';
+            previewBadge.className = 'mt-2 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] bg-blue-50 text-[#1760DC]';
+        }
+    };
+
     [inputTitulo, inputAutor, inputSello, inputColor1, inputColor2].forEach((el) => {
         if (el) el.addEventListener('input', actualizarPreview);
     });
 
-    if (inputArchivo && textoArchivo) {
+    if (inputArchivo) {
         inputArchivo.addEventListener('change', () => {
-            if (inputArchivo.files && inputArchivo.files.length > 0) {
-                textoArchivo.textContent = 'Archivo seleccionado: ' + inputArchivo.files[0].name;
-            } else {
-                textoArchivo.textContent = 'Subir imagen de portada (JPG, PNG, WebP · máx. 3 MB)';
+            if (avisoImagen) {
+                avisoImagen.classList.add('hidden');
+                avisoImagen.textContent = '';
             }
+
+            if (inputArchivo.files && inputArchivo.files.length > 0) {
+                const archivo = inputArchivo.files[0];
+                const mimesValidos = ['image/jpeg', 'image/png', 'image/webp'];
+                const ext = (archivo.name.split('.').pop() || '').toLowerCase();
+                const extsValidas = ['jpg', 'jpeg', 'png', 'webp'];
+                const maxBytes = 3 * 1024 * 1024;
+
+                if (!mimesValidos.includes(archivo.type) || !extsValidas.includes(ext)) {
+                    if (avisoImagen) {
+                        avisoImagen.textContent = 'Atención: formato no permitido. Solo se aceptan imágenes JPG, PNG o WebP.';
+                        avisoImagen.classList.remove('hidden');
+                    }
+                } else if (archivo.size > maxBytes) {
+                    if (avisoImagen) {
+                        avisoImagen.textContent = 'Atención: la imagen seleccionada supera el límite máximo de 3 MB.';
+                        avisoImagen.classList.remove('hidden');
+                    }
+                }
+
+                limpiarUrlTemporal();
+                urlObjetoTemporal = URL.createObjectURL(archivo);
+                if (inputEliminarImagen) {
+                    inputEliminarImagen.value = '0';
+                }
+
+                const kb = Math.max(1, Math.round(archivo.size / 1024));
+                activarModoImagen(
+                    urlObjetoTemporal,
+                    `${archivo.name} (${kb} KB)`,
+                    'Nueva portada seleccionada',
+                    false
+                );
+            } else {
+                limpiarUrlTemporal();
+                const tieneGuardada = inputImagenActual && inputImagenActual.value.trim() !== '';
+                const marcadaEliminar = inputEliminarImagen && inputEliminarImagen.value === '1';
+
+                if (tieneGuardada && !marcadaEliminar && panelImagenActiva) {
+                    const urlInicial = panelImagenActiva.getAttribute('data-imagen-inicial') || '';
+                    const nombreInicial = panelImagenActiva.getAttribute('data-nombre-inicial') || '';
+                    activarModoImagen(urlInicial, nombreInicial, 'Portada actual guardada', true);
+                } else {
+                    activarModoEditorial();
+                }
+            }
+        });
+    }
+
+    if (btnCambiarImagen && inputArchivo) {
+        btnCambiarImagen.addEventListener('click', () => {
+            inputArchivo.click();
+        });
+    }
+
+    if (btnRetirarImagen) {
+        btnRetirarImagen.addEventListener('click', () => {
+            limpiarUrlTemporal();
+            if (inputArchivo) {
+                inputArchivo.value = '';
+            }
+            if (avisoImagen) {
+                avisoImagen.classList.add('hidden');
+                avisoImagen.textContent = '';
+            }
+            if (inputImagenActual && inputImagenActual.value.trim() !== '' && inputEliminarImagen) {
+                inputEliminarImagen.value = '1';
+            }
+            activarModoEditorial();
         });
     }
 

@@ -370,13 +370,8 @@ class Producto
         $stmt = $this->db->prepare('DELETE FROM productos WHERE id = :id');
         $stmt->execute([':id' => $id]);
 
-        // Si tenía una imagen local subida, la limpiamos del disco
-        if (!empty($producto['imagen']) && str_starts_with((string) $producto['imagen'], 'assets/img/portadas/')) {
-            $rutaFisica = dirname(__DIR__) . '/' . $producto['imagen'];
-            if (is_file($rutaFisica)) {
-                @unlink($rutaFisica);
-            }
-        }
+        // Si tenía una imagen local subida, la limpiamos del disco de forma segura
+        $this->eliminarArchivoPortada((string) ($producto['imagen'] ?? ''), $id);
 
         return [
             'eliminado'   => true,
@@ -386,7 +381,55 @@ class Producto
     }
 
     /**
+     * Elimina de forma segura un archivo de portada local si ya no está referenciado
+     * por ningún otro libro en la base de datos.
+     */
+    public function eliminarArchivoPortada(?string $rutaImagen, ?int $excluirProductoId = null): bool
+    {
+        $ruta = trim((string) ($rutaImagen ?? ''));
+        if ($ruta === '' || !str_starts_with($ruta, 'assets/img/portadas/')) {
+            return false;
+        }
+
+        $nombreArchivo = basename($ruta);
+        if (
+            $nombreArchivo === ''
+            || $nombreArchivo === '.'
+            || $nombreArchivo === '..'
+            || $nombreArchivo === '.gitkeep'
+            || $nombreArchivo === '.htaccess'
+        ) {
+            return false;
+        }
+
+        $rutaNormalizada = 'assets/img/portadas/' . $nombreArchivo;
+
+        // Comprobar que ningún otro libro del catálogo utilice esta misma imagen
+        $sql    = 'SELECT COUNT(*) FROM productos WHERE imagen = :imagen';
+        $params = [':imagen' => $rutaNormalizada];
+        if ($excluirProductoId !== null && $excluirProductoId > 0) {
+            $sql                  .= ' AND id <> :excluir_id';
+            $params[':excluir_id'] = $excluirProductoId;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        if ((int) $stmt->fetchColumn() > 0) {
+            return false;
+        }
+
+        $rutaFisica = dirname(__DIR__) . '/assets/img/portadas/' . $nombreArchivo;
+        if (is_file($rutaFisica)) {
+            return @unlink($rutaFisica);
+        }
+
+        return false;
+    }
+
+    /**
      * Gestiona la subida segura de una imagen de portada al servidor.
+     * Valida tamaño máximo, extensión original, ausencia de extensiones ejecutables,
+     * MIME real mediante finfo, estructura de imagen y genera un nombre único seguro.
      *
      * @param array<string, mixed> $archivo Elemento de $_FILES['imagen_archivo'].
      * @return string|null Ruta relativa guardada o null si no se subió archivo.
@@ -398,13 +441,39 @@ class Producto
             return null;
         }
 
-        if ((int) $archivo['error'] !== UPLOAD_ERR_OK) {
-            throw new InvalidArgumentException('Error al subir el archivo de imagen (código ' . (int) $archivo['error'] . ').');
+        $codigoError = (int) $archivo['error'];
+        if ($codigoError === UPLOAD_ERR_INI_SIZE || $codigoError === UPLOAD_ERR_FORM_SIZE) {
+            throw new InvalidArgumentException('La imagen de portada supera el tamaño máximo permitido (3 MB).');
+        }
+
+        if ($codigoError !== UPLOAD_ERR_OK) {
+            throw new InvalidArgumentException('Error al subir el archivo de imagen (código ' . $codigoError . ').');
         }
 
         $tamanoMaximo = 3 * 1024 * 1024; // 3 MB
-        if ((int) ($archivo['size'] ?? 0) > $tamanoMaximo) {
+        $tamanoArchivo = (int) ($archivo['size'] ?? 0);
+        if ($tamanoArchivo <= 0) {
+            throw new InvalidArgumentException('El archivo de imagen subido está vacío.');
+        }
+
+        if ($tamanoArchivo > $tamanoMaximo) {
             throw new InvalidArgumentException('La imagen de portada no debe superar los 3 MB.');
+        }
+
+        $nombreOriginal = trim((string) ($archivo['name'] ?? ''));
+        if ($nombreOriginal === '' || str_contains($nombreOriginal, "\0")) {
+            throw new InvalidArgumentException('El nombre del archivo subido no es válido.');
+        }
+
+        // Rechazar nombres con extensiones ejecutables o de script (incluidas dobles extensiones)
+        if (preg_match('/\.(php\d*|phtml|phar|pl|py|cgi|sh|exe|bat|cmd|js|jsp|asp|aspx|htm|html|svg|htaccess)\b/i', $nombreOriginal)) {
+            throw new InvalidArgumentException('Archivo no permitido: no se admiten archivos ejecutables ni scripts.');
+        }
+
+        $extensionOriginal = strtolower((string) pathinfo($nombreOriginal, PATHINFO_EXTENSION));
+        $extensionesPermitidas = ['jpg', 'jpeg', 'png', 'webp'];
+        if ($extensionOriginal === '' || !in_array($extensionOriginal, $extensionesPermitidas, true)) {
+            throw new InvalidArgumentException('Extensión de archivo no válida. Solo se permiten imágenes JPG, JPEG, PNG o WebP.');
         }
 
         $tmpName = (string) ($archivo['tmp_name'] ?? '');
@@ -413,16 +482,25 @@ class Producto
         }
 
         $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mime  = $finfo->file($tmpName);
+        $mime  = (string) $finfo->file($tmpName);
 
         $mimesPermitidos = [
-            'image/jpeg' => 'jpg',
-            'image/png'  => 'png',
-            'image/webp' => 'webp',
+            'image/jpeg' => ['jpg', 'jpeg'],
+            'image/png'  => ['png'],
+            'image/webp' => ['webp'],
         ];
 
         if (!isset($mimesPermitidos[$mime])) {
-            throw new InvalidArgumentException('Formato de imagen no válido. Solo se permiten archivos JPG, PNG o WebP.');
+            throw new InvalidArgumentException('Formato de imagen no válido. El archivo debe ser una imagen real JPG, PNG o WebP.');
+        }
+
+        if (!in_array($extensionOriginal, $mimesPermitidos[$mime], true)) {
+            throw new InvalidArgumentException('La extensión del archivo no coincide con su contenido real de imagen.');
+        }
+
+        $dimensiones = @getimagesize($tmpName);
+        if ($dimensiones === false || (int) ($dimensiones[0] ?? 0) <= 0 || (int) ($dimensiones[1] ?? 0) <= 0) {
+            throw new InvalidArgumentException('El archivo subido no contiene una imagen válida.');
         }
 
         $directorioDestino = dirname(__DIR__) . '/assets/img/portadas';
@@ -430,9 +508,11 @@ class Producto
             throw new RuntimeException('No se pudo crear el directorio de portadas.');
         }
 
-        $extension    = $mimesPermitidos[$mime];
-        $nombreSeguro = 'portada_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $extension;
-        $rutaFisica   = $directorioDestino . '/' . $nombreSeguro;
+        $extensionFinal = $mimesPermitidos[$mime][0];
+        do {
+            $nombreSeguro = 'portada_' . date('Ymd_His') . '_' . bin2hex(random_bytes(8)) . '.' . $extensionFinal;
+            $rutaFisica   = $directorioDestino . '/' . $nombreSeguro;
+        } while (file_exists($rutaFisica));
 
         if (!move_uploaded_file($tmpName, $rutaFisica)) {
             // Fallback para pruebas automatizadas CLI donde el archivo no procede de HTTP POST multipart
@@ -440,6 +520,8 @@ class Producto
                 throw new RuntimeException('No fue posible guardar la imagen subida en el servidor.');
             }
         }
+
+        @chmod($rutaFisica, 0644);
 
         return 'assets/img/portadas/' . $nombreSeguro;
     }

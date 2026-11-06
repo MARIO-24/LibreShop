@@ -1,0 +1,16 @@
+# Bloquear ejecución de scripts y listado de directorios en portadas subidas
+Options -ExecCGI -Indexes
+
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar .pl .py .cgi .asp .aspx .jsp .sh
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phar .pl .py .cgi .asp .aspx .jsp .sh
+
+<FilesMatch "\.(?i:php\d*|phtml|phar|pl|py|cgi|sh|exe|bat|cmd|js|jsp|asp|aspx|htm|html|svg|htaccess)$">
+    Require all denied
+</FilesMatch>
