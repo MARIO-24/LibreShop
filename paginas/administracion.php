@@ -27,21 +27,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         exit;
     }
 
-    $accion = (string) ($_POST['accion'] ?? '');
+    $accion      = (string) ($_POST['accion'] ?? '');
+    $nuevaSubida = null;
 
     try {
         switch ($accion) {
             case 'guardar_producto':
-                $idEditar = isset($_POST['producto_id']) ? (int) $_POST['producto_id'] : 0;
-
-                // Gestión de imagen de portada (subida de archivo o ruta/URL existente)
-                $rutaImagen = trim((string) ($_POST['imagen_actual'] ?? ''));
-                if (!empty($_POST['eliminar_imagen'])) {
-                    $rutaImagen = '';
+                $idEditar       = isset($_POST['producto_id']) ? (int) $_POST['producto_id'] : 0;
+                $productoPrevio = $idEditar > 0 ? $gestorProductos->obtenerPorId($idEditar, false) : null;
+                if ($idEditar > 0 && $productoPrevio === null) {
+                    throw new InvalidArgumentException('El producto que intenta editar no existe.');
                 }
 
+                $imagenAnteriorBD = $productoPrevio !== null
+                    ? trim((string) ($productoPrevio['imagen'] ?? ''))
+                    : '';
+
+                // Gestión de imagen de portada (subida de archivo, sustitución o eliminación)
+                $eliminarImagen = !empty($_POST['eliminar_imagen']) && (string) $_POST['eliminar_imagen'] === '1';
+                $rutaImagen     = $eliminarImagen ? '' : $imagenAnteriorBD;
+
                 $urlManual = trim((string) ($_POST['imagen_url'] ?? ''));
-                if ($urlManual !== '') {
+                if ($urlManual !== '' && !$eliminarImagen) {
                     $rutaImagen = $urlManual;
                 }
 
@@ -61,9 +68,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'stock'            => $_POST['stock'] ?? 0,
                     'categoria_id'     => (int) ($_POST['categoria_id'] ?? 0),
                     'valoracion'       => $_POST['valoracion'] ?? 4.8,
-                    'color_primario'   => $_POST['color_primario'] ?? '#0d223c',
-                    'color_secundario' => $_POST['color_secundario'] ?? '#d89d4a',
-                    'sello_editorial'  => $_POST['sello_editorial'] ?? '',
+                    'color_primario'   => $_POST['color_primario'] ?? ($productoPrevio['color_primario'] ?? '#0d223c'),
+                    'color_secundario' => $_POST['color_secundario'] ?? ($productoPrevio['color_secundario'] ?? '#d89d4a'),
+                    'sello_editorial'  => $_POST['sello_editorial'] ?? ($productoPrevio['sello_editorial'] ?? ''),
                     'imagen'           => $rutaImagen !== '' ? $rutaImagen : null,
                     'activo'           => isset($_POST['activo']) ? 1 : 0,
                     'destacado'        => isset($_POST['destacado']) ? 1 : 0,
@@ -71,6 +78,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 if ($idEditar > 0) {
                     $gestorProductos->actualizar($idEditar, $datosProducto);
+                    // Borrar la imagen anterior únicamente después de haber guardado el nuevo registro con éxito
+                    $imagenFinal = (string) ($datosProducto['imagen'] ?? '');
+                    if ($imagenAnteriorBD !== '' && $imagenAnteriorBD !== $imagenFinal) {
+                        $gestorProductos->eliminarArchivoPortada($imagenAnteriorBD, $idEditar);
+                    }
                     establecerFlash('exito', 'Producto «' . trim((string) $datosProducto['titulo']) . '» actualizado correctamente.');
                 } else {
                     $nuevoId = $gestorProductos->crear($datosProducto);
@@ -149,6 +161,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 exit;
         }
     } catch (Throwable $ex) {
+        if ($nuevaSubida !== null) {
+            $gestorProductos->eliminarArchivoPortada($nuevaSubida);
+        }
         $erroresFormulario[] = $ex->getMessage();
     }
 }
@@ -200,7 +215,34 @@ if (isset($_GET['ver_pedido'])) {
 $productoEnEdicion  = null;
 $abrirModalProducto = false;
 
-if (isset($_GET['editar'])) {
+if (
+    ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
+    && (string) ($_POST['accion'] ?? '') === 'guardar_producto'
+    && !empty($erroresFormulario)
+) {
+    $idPost     = isset($_POST['producto_id']) ? (int) $_POST['producto_id'] : 0;
+    $previoPost = $idPost > 0 ? $gestorProductos->obtenerPorId($idPost, false) : null;
+    $elimPost   = !empty($_POST['eliminar_imagen']) && (string) $_POST['eliminar_imagen'] === '1';
+
+    $abrirModalProducto = true;
+    $productoEnEdicion  = [
+        'id'               => $idPost,
+        'titulo'           => (string) ($_POST['titulo'] ?? ''),
+        'autor'            => (string) ($_POST['autor'] ?? ''),
+        'isbn'             => (string) ($_POST['isbn'] ?? ''),
+        'descripcion'      => (string) ($_POST['descripcion'] ?? ''),
+        'precio'           => (string) ($_POST['precio'] ?? '19.90'),
+        'stock'            => (int) ($_POST['stock'] ?? 10),
+        'categoria_id'     => (int) ($_POST['categoria_id'] ?? ($categorias[0]['id'] ?? 1)),
+        'valoracion'       => (string) ($_POST['valoracion'] ?? '4.8'),
+        'color_primario'   => (string) ($_POST['color_primario'] ?? ($previoPost['color_primario'] ?? '#0d223c')),
+        'color_secundario' => (string) ($_POST['color_secundario'] ?? ($previoPost['color_secundario'] ?? '#d89d4a')),
+        'sello_editorial'  => (string) ($_POST['sello_editorial'] ?? ($previoPost['sello_editorial'] ?? '')),
+        'imagen'           => $elimPost ? '' : (string) ($previoPost['imagen'] ?? ''),
+        'activo'           => isset($_POST['activo']) ? 1 : 0,
+        'destacado'        => isset($_POST['destacado']) ? 1 : 0,
+    ];
+} elseif (isset($_GET['editar'])) {
     $productoEnEdicion  = $gestorProductos->obtenerPorId((int) $_GET['editar'], false);
     $abrirModalProducto = $productoEnEdicion !== null;
 } elseif (isset($_GET['accion']) && $_GET['accion'] === 'nuevo') {
@@ -814,9 +856,20 @@ require_once __DIR__ . '/../includes/Cabecera.php';
              MODAL DE CREACIÓN / EDICIÓN DE PRODUCTO (Fiel a Figma Make)
              ================================================================== -->
         <?php if ($abrirModalProducto && $productoEnEdicion !== null): ?>
-            <?php $esEdicionProd = (int) ($productoEnEdicion['id'] ?? 0) > 0; ?>
+            <?php
+            $esEdicionProd       = (int) ($productoEnEdicion['id'] ?? 0) > 0;
+            $imagenGuardada      = trim((string) ($productoEnEdicion['imagen'] ?? ''));
+            $tieneImagenGuardada = $imagenGuardada !== '';
+            $urlImagenGuardada   = '';
+            if ($tieneImagenGuardada) {
+                $urlImagenGuardada = preg_match('#^https?://#i', $imagenGuardada)
+                    ? $imagenGuardada
+                    : '../' . ltrim($imagenGuardada, '/');
+            }
+            ?>
             <div id="modal-producto" class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-[#071423]/60 p-4 backdrop-blur-sm">
                 <form
+                    id="form-producto-admin"
                     method="post"
                     action="administracion.php"
                     enctype="multipart/form-data"
@@ -825,7 +878,8 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                     <?= campoCSRF() ?>
                     <input type="hidden" name="accion" value="guardar_producto" />
                     <input type="hidden" name="producto_id" value="<?= (int) ($productoEnEdicion['id'] ?? 0) ?>" />
-                    <input type="hidden" name="imagen_actual" value="<?= e($productoEnEdicion['imagen'] ?? '') ?>" />
+                    <input type="hidden" id="input-imagen-actual" name="imagen_actual" value="<?= e($imagenGuardada) ?>" />
+                    <input type="hidden" id="input-eliminar-imagen" name="eliminar_imagen" value="0" />
 
                     <div class="flex items-center justify-between border-b border-slate-100 pb-4">
                         <h2 class="text-xl font-bold text-[#142943]">
@@ -836,6 +890,14 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                         </a>
                     </div>
 
+                    <?php if (!empty($erroresFormulario)): ?>
+                        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                            <?php foreach ($erroresFormulario as $errModal): ?>
+                                <p><?= e($errModal) ?></p>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="mt-5 grid gap-5 md:grid-cols-[150px_1fr]">
                         <div class="flex flex-col items-center">
                             <span class="meta mb-2">Vista previa</span>
@@ -844,20 +906,34 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                                 class="book-cover relative isolate overflow-hidden rounded-[3px] shadow-[8px_10px_22px_rgba(15,31,52,.22)] h-48 aspect-[.68]"
                                 style="background: linear-gradient(145deg, <?= e($productoEnEdicion['color_primario'] ?? '#0d223c') ?>, <?= e($productoEnEdicion['color_secundario'] ?? '#d89d4a') ?>)"
                             >
-                                <div class="absolute inset-y-0 left-0 w-[7%] bg-black/15"></div>
-                                <div class="absolute -right-8 top-[14%] h-28 w-28 rounded-full border border-white/35"></div>
-                                <div class="absolute -right-3 top-[22%] h-16 w-16 rounded-full border border-white/20"></div>
-                                <div class="relative flex h-full flex-col px-[13%] py-[14%] text-white">
-                                    <span id="preview-book-autor" class="text-[8px] font-semibold uppercase tracking-[.22em] opacity-80">
-                                        <?= e(($productoEnEdicion['autor'] ?? '') !== '' ? $productoEnEdicion['autor'] : 'LibreShop') ?>
-                                    </span>
-                                    <strong id="preview-book-sello" class="mt-auto max-w-[90%] text-sm font-bold leading-[.94] tracking-[-.06em]">
-                                        <?= e(($productoEnEdicion['sello_editorial'] ?? '') !== '' ? $productoEnEdicion['sello_editorial'] : 'NUEVO LIBRO') ?>
-                                    </strong>
-                                    <span class="mt-2 h-px w-7 bg-white/70"></span>
-                                    <span class="mt-2 text-[7px] uppercase tracking-[.2em] opacity-80">LibreShop editorial</span>
+                                <img
+                                    id="preview-book-img"
+                                    src="<?= e($urlImagenGuardada) ?>"
+                                    alt="Vista previa de portada"
+                                    class="absolute inset-0 h-full w-full object-cover <?= $tieneImagenGuardada ? '' : 'hidden' ?>"
+                                />
+                                <div class="absolute inset-y-0 left-0 w-[7%] bg-black/15 z-10"></div>
+                                <div id="preview-editorial-content" class="h-full w-full <?= $tieneImagenGuardada ? 'hidden' : '' ?>">
+                                    <div class="absolute -right-8 top-[14%] h-28 w-28 rounded-full border border-white/35"></div>
+                                    <div class="absolute -right-3 top-[22%] h-16 w-16 rounded-full border border-white/20"></div>
+                                    <div class="relative flex h-full flex-col px-[13%] py-[14%] text-white">
+                                        <span id="preview-book-autor" class="text-[8px] font-semibold uppercase tracking-[.22em] opacity-80">
+                                            <?= e(($productoEnEdicion['autor'] ?? '') !== '' ? $productoEnEdicion['autor'] : 'LibreShop') ?>
+                                        </span>
+                                        <strong id="preview-book-sello" class="mt-auto max-w-[90%] text-sm font-bold leading-[.94] tracking-[-.06em]">
+                                            <?= e(($productoEnEdicion['sello_editorial'] ?? '') !== '' ? $productoEnEdicion['sello_editorial'] : 'NUEVO LIBRO') ?>
+                                        </strong>
+                                        <span class="mt-2 h-px w-7 bg-white/70"></span>
+                                        <span class="mt-2 text-[7px] uppercase tracking-[.2em] opacity-80">LibreShop editorial</span>
+                                    </div>
                                 </div>
                             </div>
+                            <span
+                                id="preview-modo-badge"
+                                class="mt-2 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[.08em] <?= $tieneImagenGuardada ? 'bg-blue-50 text-[#1760DC]' : 'bg-slate-100 text-slate-600' ?>"
+                            >
+                                <?= $tieneImagenGuardada ? 'Imagen de portada' : 'Cubierta editorial' ?>
+                            </span>
                         </div>
 
                         <div class="grid gap-4 sm:grid-cols-2">
@@ -954,62 +1030,123 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                             ><?= e($productoEnEdicion['descripcion'] ?? '') ?></textarea>
                         </label>
 
-                        <label class="field-label">
-                            Sello en portada
-                            <input
-                                id="prod-sello"
-                                name="sello_editorial"
-                                value="<?= e($productoEnEdicion['sello_editorial'] ?? '') ?>"
-                                placeholder="Ej. LAS SOMBRAS"
-                                class="input mt-1.5"
-                            />
-                        </label>
-                        <label class="field-label">
-                            Color cubierta 1
-                            <input
-                                id="prod-color1"
-                                name="color_primario"
-                                type="color"
-                                value="<?= e($productoEnEdicion['color_primario'] ?? '#0d223c') ?>"
-                                class="input mt-1.5 p-1"
-                            />
-                        </label>
-                        <label class="field-label">
-                            Color cubierta 2
-                            <input
-                                id="prod-color2"
-                                name="color_secundario"
-                                type="color"
-                                value="<?= e($productoEnEdicion['color_secundario'] ?? '#d89d4a') ?>"
-                                class="input mt-1.5 p-1"
-                            />
-                        </label>
-
-                        <div class="sm:col-span-3">
-                            <span class="field-label">Portada personalizada (opcional)</span>
-                            <label
-                                for="prod-imagen-archivo"
-                                class="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 py-4 text-sm text-slate-500 hover:border-blue-200 hover:text-[#1760DC]"
-                            >
-                                <?= icono('upload', 18) ?>
-                                <span id="nombre-archivo-portada">Subir imagen de portada (JPG, PNG, WebP · máx. 3 MB)</span>
-                            </label>
+                        <!-- Subida y gestión de imagen de portada -->
+                        <div id="seccion-subida-portada" class="sm:col-span-3">
+                            <span class="field-label">Imagen de portada (opcional)</span>
                             <input
                                 id="prod-imagen-archivo"
                                 name="imagen_archivo"
                                 type="file"
-                                accept="image/jpeg,image/png,image/webp"
+                                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                                 class="hidden"
                             />
-                            <?php if (!empty($productoEnEdicion['imagen'])): ?>
-                                <div class="mt-2 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                                    <span>Imagen actual: <strong><?= e($productoEnEdicion['imagen']) ?></strong></span>
-                                    <label class="flex items-center gap-1.5 font-semibold text-red-600">
-                                        <input type="checkbox" name="eliminar_imagen" value="1" />
-                                        Quitar imagen y usar portada editorial
+
+                            <label
+                                id="zona-selector-imagen"
+                                for="prod-imagen-archivo"
+                                class="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-4 px-4 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:text-[#1760DC] <?= $tieneImagenGuardada ? 'hidden' : '' ?>"
+                            >
+                                <?= icono('upload', 18) ?>
+                                <span id="nombre-archivo-portada">Subir imagen de portada (JPG, PNG, WebP · máx. 3 MB)</span>
+                            </label>
+
+                            <div
+                                id="panel-imagen-activa"
+                                class="mt-1.5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 <?= $tieneImagenGuardada ? '' : 'hidden' ?>"
+                                data-imagen-inicial="<?= e($urlImagenGuardada) ?>"
+                                data-nombre-inicial="<?= e($imagenGuardada !== '' ? basename($imagenGuardada) : '') ?>"
+                            >
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <img
+                                        id="thumb-imagen-activa"
+                                        src="<?= e($urlImagenGuardada) ?>"
+                                        alt="Miniatura de portada"
+                                        class="h-14 w-10 shrink-0 rounded border border-slate-200 bg-white object-cover shadow-sm"
+                                    />
+                                    <div class="min-w-0">
+                                        <span id="estado-imagen-activa" class="block text-[10px] font-bold uppercase tracking-[.12em] text-[#1760DC]">
+                                            <?= $tieneImagenGuardada ? 'Portada actual guardada' : 'Nueva portada seleccionada' ?>
+                                        </span>
+                                        <strong id="nombre-imagen-activa" class="block truncate text-xs font-bold text-[#142943]">
+                                            <?= e($imagenGuardada !== '' ? basename($imagenGuardada) : '') ?>
+                                        </strong>
+                                        <span class="block text-[11px] text-slate-500">
+                                            La imagen oculta y reemplaza la cubierta editorial de colores.
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        id="btn-cambiar-imagen"
+                                        class="btn-secondary min-h-0 h-9 px-3 py-1.5 text-xs"
+                                    >
+                                        <?= icono('upload', 14) ?>
+                                        <span id="texto-btn-cambiar"><?= $tieneImagenGuardada ? 'Sustituir imagen' : 'Cambiar imagen' ?></span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="btn-retirar-imagen"
+                                        class="btn-danger-outline min-h-0 h-9 px-3 py-1.5 text-xs"
+                                    >
+                                        <?= icono('trash', 14) ?>
+                                        <span id="texto-btn-retirar"><?= $tieneImagenGuardada ? 'Eliminar portada' : 'Retirar imagen' ?></span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <p id="aviso-imagen-portada" class="mt-1.5 hidden text-xs font-semibold text-red-600"></p>
+                        </div>
+
+                        <!-- Personalización de cubierta editorial (colores + sello extra), visible solo cuando NO hay imagen -->
+                        <div
+                            id="seccion-personalizacion-cubierta"
+                            class="sm:col-span-3 rounded-xl border border-slate-200 bg-slate-50 p-4 <?= $tieneImagenGuardada ? 'hidden' : '' ?>"
+                        >
+                            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <span class="text-xs font-bold uppercase tracking-[.1em] text-[#142943]">
+                                    Personalización de cubierta editorial
+                                </span>
+                                <span class="text-[11px] text-slate-500">
+                                    Se aplica cuando el libro no dispone de imagen de portada
+                                </span>
+                            </div>
+                            <div class="grid gap-4 sm:grid-cols-3">
+                                <div id="bloque-personalizacion-extra">
+                                    <label class="field-label">
+                                        Sello en portada
+                                        <input
+                                            id="prod-sello"
+                                            name="sello_editorial"
+                                            value="<?= e($productoEnEdicion['sello_editorial'] ?? '') ?>"
+                                            placeholder="Ej. LAS SOMBRAS"
+                                            class="input mt-1.5"
+                                        />
                                     </label>
                                 </div>
-                            <?php endif; ?>
+                                <div id="bloque-colores-cubierta" class="grid grid-cols-2 gap-4 sm:col-span-2">
+                                    <label class="field-label">
+                                        Color cubierta 1
+                                        <input
+                                            id="prod-color1"
+                                            name="color_primario"
+                                            type="color"
+                                            value="<?= e($productoEnEdicion['color_primario'] ?? '#0d223c') ?>"
+                                            class="input mt-1.5 p-1"
+                                        />
+                                    </label>
+                                    <label class="field-label">
+                                        Color cubierta 2
+                                        <input
+                                            id="prod-color2"
+                                            name="color_secundario"
+                                            type="color"
+                                            value="<?= e($productoEnEdicion['color_secundario'] ?? '#d89d4a') ?>"
+                                            class="input mt-1.5 p-1"
+                                        />
+                                    </label>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-6 sm:col-span-3 pt-2">
