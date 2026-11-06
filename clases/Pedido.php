@@ -18,16 +18,17 @@ class Pedido
     public const ESTADOS_VALIDOS = ['Pendiente', 'Enviado', 'Entregado', 'Cancelado'];
 
     /**
-     * Transiciones de estado permitidas en administración para evitar cambios incoherentes
-     * (por ejemplo, impedir que un pedido Entregado o Cancelado vuelva a Pendiente).
+     * Transiciones de estado permitidas en administración.
+     * Todos los pedidos pueden cambiar a cualquiera de los cuatro estados disponibles
+     * sin estados terminales que bloqueen futuras modificaciones.
      *
      * @var array<string, array<int, string>>
      */
     public const TRANSICIONES_PERMITIDAS = [
-        'Pendiente' => ['Enviado', 'Cancelado'],
-        'Enviado'   => ['Entregado', 'Cancelado'],
-        'Entregado' => [],
-        'Cancelado' => [],
+        'Pendiente' => self::ESTADOS_VALIDOS,
+        'Enviado'   => self::ESTADOS_VALIDOS,
+        'Entregado' => self::ESTADOS_VALIDOS,
+        'Cancelado' => self::ESTADOS_VALIDOS,
     ];
 
     private PDO $db;
@@ -54,13 +55,14 @@ class Pedido
     }
 
     /**
-     * Devuelve los estados a los que puede pasar un pedido desde su estado actual.
+     * Devuelve los estados disponibles para un pedido.
+     * Cualquier estado puede pasar a cualquier otro estado válido.
      *
      * @return array<int, string>
      */
     public static function obtenerTransicionesPermitidas(string $estadoActual): array
     {
-        return self::TRANSICIONES_PERMITIDAS[$estadoActual] ?? [];
+        return self::TRANSICIONES_PERMITIDAS[$estadoActual] ?? self::ESTADOS_VALIDOS;
     }
 
     /**
@@ -443,13 +445,31 @@ class Pedido
     }
 
     /**
-     * Actualiza el estado de un pedido validando la máquina de transiciones permitidas.
-     * Si el pedido pasa a 'Cancelado', restituye el stock de sus libros dentro de la transacción.
+     * Actualiza el estado de un pedido permitiendo transiciones libres entre cualquiera
+     * de los cuatro estados válidos y controlando el stock de forma transaccional:
+     * - Al pasar de un estado activo (Pendiente, Enviado, Entregado) a 'Cancelado':
+     *   restituye el stock del pedido una única vez.
+     * - Al salir de 'Cancelado' hacia otro estado (Pendiente, Enviado, Entregado):
+     *   verifica que exista stock suficiente y vuelve a descontar las unidades.
+     * - Entre estados activos o si se mantiene el mismo estado:
+     *   no modifica el stock para evitar devoluciones o descuentos duplicados.
      *
-     * @throws InvalidArgumentException Si el pedido no existe o la transición de estado es incoherente.
+     * @throws InvalidArgumentException|RuntimeException Si el pedido no existe, el estado es inválido,
+     *                                                   el usuario no es administrador o no hay stock suficiente.
      */
     public function actualizarEstado(int $pedidoId, string $nuevoEstado): bool
     {
+        if (
+            function_exists('estaAutenticado')
+            && ((estaAutenticado() && !esAdministrador()) || (PHP_SAPI !== 'cli' && !esAdministrador()))
+        ) {
+            throw new RuntimeException('Acceso restringido: solo un administrador puede modificar el estado de los pedidos.');
+        }
+
+        if ($pedidoId <= 0) {
+            throw new InvalidArgumentException('El pedido indicado no existe.');
+        }
+
         $nuevoEstado = trim($nuevoEstado);
         if (!in_array($nuevoEstado, self::ESTADOS_VALIDOS, true)) {
             throw new InvalidArgumentException('El estado de pedido indicado no es válido.');
@@ -466,21 +486,83 @@ class Pedido
                 throw new InvalidArgumentException('El pedido indicado no existe.');
             }
 
-            $estadoActual = (string) $pedido['estado'];
-            if ($estadoActual === $nuevoEstado) {
+            $estadoAnterior = (string) $pedido['estado'];
+            if ($estadoAnterior === $nuevoEstado) {
                 $this->db->commit();
                 return true;
             }
 
-            $permitidos = self::obtenerTransicionesPermitidas($estadoActual);
-            if (!in_array($nuevoEstado, $permitidos, true)) {
-                throw new InvalidArgumentException(
-                    sprintf(
-                        'Transición no permitida: un pedido en estado «%s» no puede cambiar a «%s».',
-                        $estadoActual,
-                        $nuevoEstado
-                    )
+            $stmtLineas = $this->db->prepare(
+                'SELECT producto_id, SUM(cantidad) AS cantidad_total
+                 FROM detalle_pedido
+                 WHERE pedido_id = :pedido_id
+                 GROUP BY producto_id
+                 ORDER BY producto_id ASC'
+            );
+            $stmtLineas->execute([':pedido_id' => $pedidoId]);
+            $lineas = $stmtLineas->fetchAll();
+
+            // 1. Si pasa de un estado activo a Cancelado: restituir stock una sola vez
+            if ($estadoAnterior !== 'Cancelado' && $nuevoEstado === 'Cancelado') {
+                $stmtLockProd = $this->db->prepare('SELECT id FROM productos WHERE id = :id FOR UPDATE');
+                $stmtSumar    = $this->db->prepare('UPDATE productos SET stock = stock + :cantidad WHERE id = :id');
+
+                foreach ($lineas as $linea) {
+                    $prodId   = (int) $linea['producto_id'];
+                    $cantidad = (int) $linea['cantidad_total'];
+
+                    $stmtLockProd->execute([':id' => $prodId]);
+                    $stmtSumar->execute([
+                        ':cantidad' => $cantidad,
+                        ':id'       => $prodId,
+                    ]);
+                }
+            }
+            // 2. Si sale de Cancelado hacia otro estado activo: verificar stock suficiente y descontar
+            elseif ($estadoAnterior === 'Cancelado' && $nuevoEstado !== 'Cancelado') {
+                $stmtLockProd  = $this->db->prepare('SELECT id, titulo, stock FROM productos WHERE id = :id FOR UPDATE');
+                $stmtDescontar = $this->db->prepare(
+                    'UPDATE productos
+                     SET stock = stock - :cantidad
+                     WHERE id = :id AND stock >= :cantidad_check'
                 );
+
+                foreach ($lineas as $linea) {
+                    $prodId   = (int) $linea['producto_id'];
+                    $cantidad = (int) $linea['cantidad_total'];
+
+                    $stmtLockProd->execute([':id' => $prodId]);
+                    $producto = $stmtLockProd->fetch();
+
+                    if ($producto === false) {
+                        throw new RuntimeException('Uno de los productos del pedido ya no existe en el catálogo.');
+                    }
+
+                    $stockDisponible = (int) $producto['stock'];
+                    if ($stockDisponible < $cantidad) {
+                        throw new RuntimeException(
+                            sprintf(
+                                'No hay stock suficiente para reactivar el pedido: «%s» requiere %d %s y actualmente hay %d en stock.',
+                                (string) $producto['titulo'],
+                                $cantidad,
+                                $cantidad === 1 ? 'unidad' : 'unidades',
+                                $stockDisponible
+                            )
+                        );
+                    }
+
+                    $stmtDescontar->execute([
+                        ':cantidad'       => $cantidad,
+                        ':id'             => $prodId,
+                        ':cantidad_check' => $cantidad,
+                    ]);
+
+                    if ($stmtDescontar->rowCount() !== 1) {
+                        throw new RuntimeException(
+                            'No se pudo descontar el stock del producto «' . (string) $producto['titulo'] . '».'
+                        );
+                    }
+                }
             }
 
             $stmtUpd = $this->db->prepare('UPDATE pedidos SET estado = :estado WHERE id = :id');
@@ -488,18 +570,6 @@ class Pedido
                 ':estado' => $nuevoEstado,
                 ':id'     => $pedidoId,
             ]);
-
-            // Si se cancela el pedido, devolver las unidades al stock de productos
-            if ($nuevoEstado === 'Cancelado') {
-                $lineas    = $this->obtenerLineasPedido($pedidoId);
-                $stmtStock = $this->db->prepare('UPDATE productos SET stock = stock + :cantidad WHERE id = :id');
-                foreach ($lineas as $linea) {
-                    $stmtStock->execute([
-                        ':cantidad' => (int) $linea['cantidad'],
-                        ':id'       => (int) $linea['producto_id'],
-                    ]);
-                }
-            }
 
             $this->db->commit();
             return true;

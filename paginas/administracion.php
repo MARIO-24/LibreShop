@@ -209,6 +209,14 @@ if (isset($_GET['ver_pedido'])) {
     if ($pedidoEnDetalle !== null) {
         $seccionActiva = 'pedidos';
     }
+} elseif (
+    ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
+    && (string) ($_POST['accion'] ?? '') === 'actualizar_estado_pedido'
+) {
+    $seccionActiva = 'pedidos';
+    if (!empty($_POST['mantener_detalle']) && !empty($_POST['pedido_id'])) {
+        $pedidoEnDetalle = $gestorPedidos->obtenerPorIdYUsuario((int) $_POST['pedido_id'], 0, true);
+    }
 }
 
 // Determinar si hay un producto abierto para crear o editar
@@ -676,7 +684,7 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                                 <?php
                                 $idPed              = (int) $ped['id'];
                                 $estadoActualPed    = (string) $ped['estado'];
-                                $transicionesPed    = Pedido::obtenerTransicionesPermitidas($estadoActualPed);
+                                $estadosDisponibles = Pedido::obtenerTransicionesPermitidas($estadoActualPed);
                                 $nombreClienteCompl = trim((string) $ped['usuario_nombre'] . ' ' . (string) $ped['usuario_apellidos']);
                                 ?>
                                 <tr class="border-t border-slate-100">
@@ -704,30 +712,28 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                                     </td>
                                     <td>
                                         <div class="flex flex-wrap items-center gap-2">
-                                            <?php if (!empty($transicionesPed)): ?>
-                                                <form method="post" action="administracion.php?seccion=pedidos" class="flex items-center gap-1.5 m-0">
-                                                    <?= campoCSRF() ?>
-                                                    <input type="hidden" name="accion" value="actualizar_estado_pedido" />
-                                                    <input type="hidden" name="pedido_id" value="<?= $idPed ?>" />
-                                                    <select
-                                                        name="nuevo_estado"
-                                                        class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-[#142943]"
-                                                        aria-label="Cambiar estado de <?= e($ped['codigo']) ?>"
-                                                    >
-                                                        <?php foreach ($transicionesPed as $sigEstado): ?>
-                                                            <option value="<?= e($sigEstado) ?>">Pasar a: <?= e($sigEstado) ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                    <button
-                                                        type="submit"
-                                                        class="rounded-md bg-[#1760DC] px-2.5 py-1 text-xs font-bold text-white hover:bg-[#114fb9]"
-                                                    >
-                                                        Guardar
-                                                    </button>
-                                                </form>
-                                            <?php else: ?>
-                                                <span class="text-xs font-semibold text-slate-400">Estado final</span>
-                                            <?php endif; ?>
+                                            <form method="post" action="administracion.php?seccion=pedidos" class="flex items-center gap-1.5 m-0">
+                                                <?= campoCSRF() ?>
+                                                <input type="hidden" name="accion" value="actualizar_estado_pedido" />
+                                                <input type="hidden" name="pedido_id" value="<?= $idPed ?>" />
+                                                <select
+                                                    name="nuevo_estado"
+                                                    class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-[#142943]"
+                                                    aria-label="Cambiar estado de <?= e($ped['codigo']) ?>"
+                                                >
+                                                    <?php foreach ($estadosDisponibles as $sigEstado): ?>
+                                                        <option value="<?= e($sigEstado) ?>" <?= $estadoActualPed === $sigEstado ? 'selected' : '' ?>>
+                                                            <?= e($sigEstado) ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <button
+                                                    type="submit"
+                                                    class="rounded-md bg-[#1760DC] px-2.5 py-1 text-xs font-bold text-white hover:bg-[#114fb9]"
+                                                >
+                                                    Guardar
+                                                </button>
+                                            </form>
 
                                             <a
                                                 href="administracion.php?seccion=pedidos&amp;ver_pedido=<?= $idPed ?>"
@@ -766,6 +772,14 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                             <?= icono('close', 20) ?>
                         </a>
                     </div>
+
+                    <?php if (!empty($erroresFormulario)): ?>
+                        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                            <?php foreach ($erroresFormulario as $errPed): ?>
+                                <p><?= e($errPed) ?></p>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="mt-5 grid gap-4 sm:grid-cols-2 rounded-xl bg-slate-50 p-4 text-xs text-slate-600">
                         <div>
@@ -808,7 +822,7 @@ require_once __DIR__ . '/../includes/Cabecera.php';
 
                     <div class="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
                         <div class="flex items-center gap-2">
-                            <span class="text-xs font-semibold text-slate-500">Estado:</span>
+                            <span class="text-xs font-semibold text-slate-500">Estado actual:</span>
                             <?= renderizarEstadoPedido($estadoDetalle) ?>
                         </div>
                         <div class="text-right">
@@ -823,26 +837,23 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                     </div>
 
                     <div class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                        <?php if (!empty($transicionesDetalle)): ?>
-                            <form method="post" action="administracion.php?seccion=pedidos" class="flex items-center gap-2 m-0">
-                                <?= campoCSRF() ?>
-                                <input type="hidden" name="accion" value="actualizar_estado_pedido" />
-                                <input type="hidden" name="pedido_id" value="<?= (int) $pedidoEnDetalle['id'] ?>" />
-                                <input type="hidden" name="mantener_detalle" value="1" />
-                                <select name="nuevo_estado" class="input h-10 w-auto py-1 text-xs font-semibold">
-                                    <?php foreach ($transicionesDetalle as $sigEst): ?>
-                                        <option value="<?= e($sigEst) ?>">Cambiar estado a: <?= e($sigEst) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button type="submit" class="btn-primary min-h-0 h-10 px-4 py-2 text-xs">
-                                    Actualizar estado
-                                </button>
-                            </form>
-                        <?php else: ?>
-                            <span class="text-xs font-semibold text-slate-400">
-                                Este pedido se encuentra en estado final («<?= e($estadoDetalle) ?>») y no admite más cambios.
-                            </span>
-                        <?php endif; ?>
+                        <form method="post" action="administracion.php?seccion=pedidos" class="flex flex-wrap items-center gap-2 m-0">
+                            <?= campoCSRF() ?>
+                            <input type="hidden" name="accion" value="actualizar_estado_pedido" />
+                            <input type="hidden" name="pedido_id" value="<?= (int) $pedidoEnDetalle['id'] ?>" />
+                            <input type="hidden" name="mantener_detalle" value="1" />
+                            <label for="select-estado-detalle" class="text-xs font-semibold text-slate-600">Estado:</label>
+                            <select id="select-estado-detalle" name="nuevo_estado" class="input h-10 w-auto py-1 text-xs font-semibold">
+                                <?php foreach ($transicionesDetalle as $sigEst): ?>
+                                    <option value="<?= e($sigEst) ?>" <?= $estadoDetalle === $sigEst ? 'selected' : '' ?>>
+                                        <?= e($sigEst) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="submit" class="btn-primary min-h-0 h-10 px-4 py-2 text-xs">
+                                Guardar cambios
+                            </button>
+                        </form>
 
                         <a href="administracion.php?seccion=pedidos" class="btn-secondary min-h-0 h-10 px-4 py-2 text-xs">
                             Cerrar
