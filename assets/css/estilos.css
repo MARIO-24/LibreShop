@@ -344,8 +344,18 @@ textarea.input {
 }
 
 .status.sent {
+  background: #eaf1ff;
+  color: #1760dc;
+}
+
+.status.delivered {
   background: #eaf8f0;
   color: #15803d;
+}
+
+.status.cancelled {
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .admin-action {

@@ -1,7 +1,7 @@
 /**
  * LibreShop — Interacciones de interfaz en cliente (assets/js/app.js)
- * Gestiona el menú móvil, selectores de cantidad, modales de administración
- * y previsualización en vivo de portadas de libros.
+ * Gestiona el menú móvil, selectores de cantidad, selección de método de pago,
+ * prevención de doble envío en checkout, modales de administración y vista previa de portadas.
  */
 document.addEventListener('DOMContentLoaded', () => {
     // 1. Menú de navegación móvil
@@ -42,7 +42,35 @@ document.addEventListener('DOMContentLoaded', () => {
         btnMas.addEventListener('click', () => actualizarCantidad(1));
     }
 
-    // 3. Modales en el panel de administración
+    // 3. Selector de método de pago en Checkout (Tarjeta / PayPal)
+    const botonesPago = document.querySelectorAll('[data-metodo-pago]');
+    const inputMetodoPago = document.getElementById('input-metodo-pago');
+
+    if (botonesPago.length > 0 && inputMetodoPago) {
+        botonesPago.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const metodo = btn.getAttribute('data-metodo-pago') || 'Tarjeta';
+                inputMetodoPago.value = metodo;
+
+                botonesPago.forEach((b) => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    }
+
+    // 4. Prevención de doble clic al enviar el formulario de checkout
+    const formCheckout = document.getElementById('form-checkout');
+    const btnSubmitCheckout = document.getElementById('btn-confirmar-pedido');
+    if (formCheckout && btnSubmitCheckout) {
+        formCheckout.addEventListener('submit', () => {
+            if (formCheckout.checkValidity()) {
+                btnSubmitCheckout.setAttribute('disabled', 'disabled');
+                btnSubmitCheckout.style.opacity = '0.75';
+            }
+        });
+    }
+
+    // 5. Modales en el panel de administración
     document.querySelectorAll('[data-abrir-modal]').forEach((boton) => {
         boton.addEventListener('click', () => {
             const idModal = boton.getAttribute('data-abrir-modal');
@@ -63,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 4. Previsualización en tiempo real de la portada en el formulario de producto
+    // 6. Previsualización en tiempo real de la portada en el formulario de producto
     const inputTitulo = document.getElementById('prod-titulo');
     const inputAutor = document.getElementById('prod-autor');
     const inputSello = document.getElementById('prod-sello');
@@ -105,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 5. Confirmación antes de acciones destructivas
+    // 7. Confirmación antes de acciones destructivas
     document.querySelectorAll('form[data-confirmar]').forEach((formulario) => {
         formulario.addEventListener('submit', (evento) => {
             const mensaje = formulario.getAttribute('data-confirmar') || '¿Estás seguro de realizar esta acción?';

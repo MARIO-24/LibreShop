@@ -5,17 +5,19 @@ require_once __DIR__ . '/../includes/Sesiones.php';
 require_once __DIR__ . '/../includes/Funciones.php';
 require_once __DIR__ . '/../clases/Categoria.php';
 require_once __DIR__ . '/../clases/Producto.php';
+require_once __DIR__ . '/../clases/Pedido.php';
 
 // Protección obligatoria: acceso exclusivo para usuarios autenticados con rol 'administrador'
 requerirAdministrador('login.php', '../index.php');
 
 $gestorCategorias = new Categoria();
 $gestorProductos  = new Producto();
+$gestorPedidos    = new Pedido();
 
 $erroresFormulario = [];
 
 // ============================================================================
-// PROCESAMIENTO DE ACCIONES POST (CRUD Productos y Categorías con CSRF)
+// PROCESAMIENTO DE ACCIONES POST (CRUD Productos, Categorías y Pedidos con CSRF)
 // ============================================================================
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $token = $_POST['csrf_token'] ?? '';
@@ -130,6 +132,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 establecerFlash($resultado['eliminada'] ? 'exito' : 'info', $resultado['mensaje']);
                 header('Location: administracion.php?seccion=categorias');
                 exit;
+
+            case 'actualizar_estado_pedido':
+                $idPedido    = (int) ($_POST['pedido_id'] ?? 0);
+                $nuevoEstado = trim((string) ($_POST['nuevo_estado'] ?? ''));
+                $gestorPedidos->actualizarEstado($idPedido, $nuevoEstado);
+                establecerFlash(
+                    'exito',
+                    'Estado del pedido ' . Pedido::formatearCodigo($idPedido) . ' actualizado a «' . $nuevoEstado . '».'
+                );
+                $urlRedir = 'administracion.php?seccion=pedidos';
+                if (!empty($_POST['mantener_detalle'])) {
+                    $urlRedir .= '&ver_pedido=' . $idPedido;
+                }
+                header('Location: ' . $urlRedir);
+                exit;
         }
     } catch (Throwable $ex) {
         $erroresFormulario[] = $ex->getMessage();
@@ -139,7 +156,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 // ============================================================================
 // CONSULTA DE DATOS PARA LA INTERFAZ DE ADMINISTRACIÓN
 // ============================================================================
-$seccionActiva   = ($_GET['seccion'] ?? 'productos') === 'categorias' ? 'categorias' : 'productos';
+$seccionParam  = (string) ($_GET['seccion'] ?? 'productos');
+$seccionActiva = in_array($seccionParam, ['productos', 'categorias', 'pedidos'], true)
+    ? $seccionParam
+    : 'productos';
+
 $filtroBusqueda  = trim((string) ($_GET['q'] ?? ''));
 $filtroCategoria = isset($_GET['categoria_id']) ? (int) $_GET['categoria_id'] : 0;
 $filtroEstado    = (string) ($_GET['estado'] ?? 'todos');
@@ -147,17 +168,36 @@ if (!in_array($filtroEstado, ['todos', 'activos', 'inactivos'], true)) {
     $filtroEstado = 'todos';
 }
 
+$filtroEstadoPedido = trim((string) ($_GET['estado_pedido'] ?? 'todos'));
+if ($filtroEstadoPedido !== 'todos' && !in_array($filtroEstadoPedido, Pedido::ESTADOS_VALIDOS, true)) {
+    $filtroEstadoPedido = 'todos';
+}
+
 $categorias   = $gestorCategorias->obtenerTodas(false);
 $estadisticas = $gestorProductos->obtenerEstadisticas();
 $productos    = $gestorProductos->obtenerTodos([
     'estado'       => $filtroEstado,
     'categoria_id' => $filtroCategoria > 0 ? $filtroCategoria : null,
-    'q'            => $filtroBusqueda,
+    'q'            => $seccionActiva === 'productos' ? $filtroBusqueda : '',
     'orden'        => 'recientes',
 ]);
 
+$pedidosAdmin = $gestorPedidos->obtenerTodosAdmin([
+    'estado' => $filtroEstadoPedido,
+    'q'      => $seccionActiva === 'pedidos' ? $filtroBusqueda : '',
+]);
+
+// Determinar si hay un pedido abierto para consultar su detalle completo en administración
+$pedidoEnDetalle = null;
+if (isset($_GET['ver_pedido'])) {
+    $pedidoEnDetalle = $gestorPedidos->obtenerPorIdYUsuario((int) $_GET['ver_pedido'], 0, true);
+    if ($pedidoEnDetalle !== null) {
+        $seccionActiva = 'pedidos';
+    }
+}
+
 // Determinar si hay un producto abierto para crear o editar
-$productoEnEdicion = null;
+$productoEnEdicion  = null;
 $abrirModalProducto = false;
 
 if (isset($_GET['editar'])) {
@@ -206,7 +246,7 @@ if (isset($_GET['editar_cat'])) {
 $rutaBase      = '../';
 $paginaActual  = 'administracion';
 $tituloPagina  = 'Panel de Administración — LibreShop';
-$mostrarFooter = false; // Fiel al diseño original de Figma Make (view !== "admin" oculta el footer)
+$mostrarFooter = false;
 
 require_once __DIR__ . '/../includes/Cabecera.php';
 ?>
@@ -217,9 +257,17 @@ require_once __DIR__ . '/../includes/Cabecera.php';
         <div class="flex flex-wrap items-end justify-between gap-5">
             <div>
                 <p class="eyebrow">Panel de administración</p>
-                <h1 class="page-title">Gestión de productos</h1>
+                <h1 class="page-title">
+                    <?php if ($seccionActiva === 'pedidos'): ?>
+                        Gestión de pedidos
+                    <?php elseif ($seccionActiva === 'categorias'): ?>
+                        Gestión de categorías
+                    <?php else: ?>
+                        Gestión de productos
+                    <?php endif; ?>
+                </h1>
                 <p class="mt-2 text-sm text-slate-500">
-                    Administra el catálogo, las categorías, el precio, las portadas y el inventario en MySQL.
+                    Administra el catálogo, las categorías, el inventario y los pedidos de clientes en MySQL.
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-3">
@@ -246,7 +294,7 @@ require_once __DIR__ . '/../includes/Cabecera.php';
             </div>
         <?php endif; ?>
 
-        <!-- Tarjetas de resumen de inventario -->
+        <!-- Tarjetas de resumen de inventario y pedidos -->
         <div class="mt-7 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div class="rounded-xl border border-slate-200 bg-white p-4">
                 <span class="meta">Libros en catálogo</span>
@@ -266,15 +314,15 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                 <span class="mt-1 block text-xs text-slate-500">Clasificación activa en tienda</span>
             </div>
             <div class="rounded-xl border border-slate-200 bg-white p-4">
-                <span class="meta">Alerta de stock</span>
-                <strong class="text-2xl font-bold <?= $estadisticas['sin_stock'] > 0 ? 'text-amber-600' : 'text-emerald-600' ?>">
-                    <?= (int) $estadisticas['sin_stock'] ?>
-                </strong>
-                <span class="mt-1 block text-xs text-slate-500">Libros agotados (stock 0)</span>
+                <span class="meta">Pedidos registrados</span>
+                <strong class="text-2xl font-bold text-[#142943]"><?= count($pedidosAdmin) ?></strong>
+                <span class="mt-1 block text-xs text-slate-500">
+                    <?= (int) $estadisticas['sin_stock'] ?> libro(s) agotado(s)
+                </span>
             </div>
         </div>
 
-        <!-- Selector de pestaña: Productos vs Categorías -->
+        <!-- Selector de pestaña: Productos vs Categorías vs Pedidos -->
         <div class="mt-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
             <div class="flex flex-wrap gap-2">
                 <a
@@ -288,6 +336,12 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                     class="filter-pill <?= $seccionActiva === 'categorias' ? 'active' : '' ?>"
                 >
                     Categorías (<?= count($categorias) ?>)
+                </a>
+                <a
+                    href="administracion.php?seccion=pedidos"
+                    class="filter-pill <?= $seccionActiva === 'pedidos' ? 'active' : '' ?>"
+                >
+                    Pedidos (<?= count($pedidosAdmin) ?>)
                 </a>
             </div>
 
@@ -327,6 +381,35 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                     </button>
                     <?php if ($filtroBusqueda !== '' || $filtroCategoria > 0 || $filtroEstado !== 'todos'): ?>
                         <a href="administracion.php" class="text-xs font-semibold text-[#1760DC]">Limpiar</a>
+                    <?php endif; ?>
+                </form>
+            <?php elseif ($seccionActiva === 'pedidos'): ?>
+                <form method="get" action="administracion.php" class="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="seccion" value="pedidos" />
+                    <select
+                        name="estado_pedido"
+                        onchange="this.form.submit()"
+                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-[#142943]"
+                    >
+                        <option value="todos" <?= $filtroEstadoPedido === 'todos' ? 'selected' : '' ?>>Estado: Todos</option>
+                        <?php foreach (Pedido::ESTADOS_VALIDOS as $estValido): ?>
+                            <option value="<?= e($estValido) ?>" <?= $filtroEstadoPedido === $estValido ? 'selected' : '' ?>>
+                                <?= e($estValido) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <input
+                        type="search"
+                        name="q"
+                        value="<?= e($filtroBusqueda) ?>"
+                        placeholder="Buscar #pedido o cliente..."
+                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-[#142943]"
+                    />
+                    <button type="submit" class="rounded-lg bg-[#142943] px-3 py-2 text-xs font-bold text-white">
+                        Buscar
+                    </button>
+                    <?php if ($filtroBusqueda !== '' || $filtroEstadoPedido !== 'todos'): ?>
+                        <a href="administracion.php?seccion=pedidos" class="text-xs font-semibold text-[#1760DC]">Limpiar</a>
                     <?php endif; ?>
                 </form>
             <?php endif; ?>
@@ -442,7 +525,7 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                     </tbody>
                 </table>
             </div>
-        <?php else: ?>
+        <?php elseif ($seccionActiva === 'categorias'): ?>
             <!-- ==============================================================
                  TABLA DE GESTIÓN DE CATEGORÍAS
                  ============================================================== -->
@@ -522,6 +605,209 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                     </tbody>
                 </table>
             </div>
+        <?php else: ?>
+            <!-- ==============================================================
+                 TABLA DE GESTIÓN DE PEDIDOS (FASE 3)
+                 ============================================================== -->
+            <div class="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table class="w-full min-w-[800px] text-left">
+                    <thead class="bg-[#142943] text-[10px] uppercase tracking-[.12em] text-slate-300">
+                        <tr>
+                            <th>Pedido</th>
+                            <th>Cliente</th>
+                            <th>Fecha</th>
+                            <th>Dirección de envío</th>
+                            <th>Importe</th>
+                            <th>Estado actual</th>
+                            <th>Actualizar estado / Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($pedidosAdmin)): ?>
+                            <tr>
+                                <td colspan="7" class="py-12 text-center text-sm text-slate-500">
+                                    No se encontraron pedidos con los criterios seleccionados.
+                                </td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($pedidosAdmin as $ped): ?>
+                                <?php
+                                $idPed              = (int) $ped['id'];
+                                $estadoActualPed    = (string) $ped['estado'];
+                                $transicionesPed    = Pedido::obtenerTransicionesPermitidas($estadoActualPed);
+                                $nombreClienteCompl = trim((string) $ped['usuario_nombre'] . ' ' . (string) $ped['usuario_apellidos']);
+                                ?>
+                                <tr class="border-t border-slate-100">
+                                    <td>
+                                        <strong class="block text-sm text-[#142943]"><?= e($ped['codigo']) ?></strong>
+                                        <small class="text-xs text-slate-400">
+                                            <?= (int) $ped['total_unidades'] ?> <?= (int) $ped['total_unidades'] === 1 ? 'unidad' : 'unidades' ?> · <?= e($ped['metodo_pago'] ?? 'Tarjeta') ?>
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <strong class="block text-sm text-[#142943]"><?= e($nombreClienteCompl) ?></strong>
+                                        <small class="text-xs text-slate-400"><?= e($ped['usuario_email']) ?></small>
+                                    </td>
+                                    <td class="text-xs text-slate-500">
+                                        <?= e(formatoFechaEspanol((string) $ped['fecha_pedido'], true)) ?>
+                                    </td>
+                                    <td class="max-w-xs truncate text-xs text-slate-600" title="<?= e($ped['direccion_envio']) ?>">
+                                        <?= e($ped['direccion_envio']) ?>
+                                    </td>
+                                    <td class="font-bold text-[#142943]">
+                                        <?= formatoPrecio((float) $ped['total']) ?>
+                                    </td>
+                                    <td>
+                                        <?= renderizarEstadoPedido($estadoActualPed) ?>
+                                    </td>
+                                    <td>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <?php if (!empty($transicionesPed)): ?>
+                                                <form method="post" action="administracion.php?seccion=pedidos" class="flex items-center gap-1.5 m-0">
+                                                    <?= campoCSRF() ?>
+                                                    <input type="hidden" name="accion" value="actualizar_estado_pedido" />
+                                                    <input type="hidden" name="pedido_id" value="<?= $idPed ?>" />
+                                                    <select
+                                                        name="nuevo_estado"
+                                                        class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-[#142943]"
+                                                        aria-label="Cambiar estado de <?= e($ped['codigo']) ?>"
+                                                    >
+                                                        <?php foreach ($transicionesPed as $sigEstado): ?>
+                                                            <option value="<?= e($sigEstado) ?>">Pasar a: <?= e($sigEstado) ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                    <button
+                                                        type="submit"
+                                                        class="rounded-md bg-[#1760DC] px-2.5 py-1 text-xs font-bold text-white hover:bg-[#114fb9]"
+                                                    >
+                                                        Guardar
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
+                                                <span class="text-xs font-semibold text-slate-400">Estado final</span>
+                                            <?php endif; ?>
+
+                                            <a
+                                                href="administracion.php?seccion=pedidos&amp;ver_pedido=<?= $idPed ?>"
+                                                class="link-button text-xs"
+                                            >
+                                                Ver detalle <?= icono('chevron', 14) ?>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+
+        <!-- ==================================================================
+             MODAL DE DETALLE DE PEDIDO EN ADMINISTRACIÓN
+             ================================================================== -->
+        <?php if ($pedidoEnDetalle !== null): ?>
+            <?php
+            $estadoDetalle       = (string) $pedidoEnDetalle['estado'];
+            $transicionesDetalle = Pedido::obtenerTransicionesPermitidas($estadoDetalle);
+            ?>
+            <div id="modal-detalle-pedido" class="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-[#071423]/60 p-4 backdrop-blur-sm">
+                <div class="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl my-7">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                        <div>
+                            <span class="meta">Ficha administrativa de pedido</span>
+                            <h2 class="text-xl font-bold text-[#142943]">
+                                Pedido <?= e($pedidoEnDetalle['codigo']) ?>
+                            </h2>
+                        </div>
+                        <a href="administracion.php?seccion=pedidos" class="text-slate-400 hover:text-slate-700" aria-label="Cerrar">
+                            <?= icono('close', 20) ?>
+                        </a>
+                    </div>
+
+                    <div class="mt-5 grid gap-4 sm:grid-cols-2 rounded-xl bg-slate-50 p-4 text-xs text-slate-600">
+                        <div>
+                            <span class="meta">Cliente</span>
+                            <strong class="block text-sm text-[#142943]">
+                                <?= e(trim((string) $pedidoEnDetalle['usuario_nombre'] . ' ' . (string) $pedidoEnDetalle['usuario_apellidos'])) ?>
+                            </strong>
+                            <span><?= e($pedidoEnDetalle['usuario_email']) ?></span>
+                        </div>
+                        <div>
+                            <span class="meta">Fecha y método de pago</span>
+                            <strong class="block text-sm text-[#142943]">
+                                <?= e(formatoFechaEspanol((string) $pedidoEnDetalle['fecha_pedido'])) ?>
+                            </strong>
+                            <span>Pago mediante: <?= e($pedidoEnDetalle['metodo_pago'] ?? 'Tarjeta') ?></span>
+                        </div>
+                        <div class="sm:col-span-2">
+                            <span class="meta">Dirección de envío</span>
+                            <strong class="block text-sm text-[#142943]"><?= e($pedidoEnDetalle['direccion_envio']) ?></strong>
+                        </div>
+                    </div>
+
+                    <div class="mt-5">
+                        <span class="meta">Líneas del pedido</span>
+                        <div class="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200 px-4">
+                            <?php foreach ($pedidoEnDetalle['lineas'] as $linea): ?>
+                                <div class="flex items-center gap-3 py-3">
+                                    <?= renderizarPortada($linea, 'h-12 aspect-[.68] shrink-0', '../') ?>
+                                    <div class="flex-1 min-w-0">
+                                        <strong class="block truncate text-sm text-[#142943]"><?= e($linea['titulo']) ?></strong>
+                                        <span class="text-xs text-slate-500">
+                                            ISBN: <?= e($linea['isbn']) ?> · <?= (int) $linea['cantidad'] ?> × <?= formatoPrecio((float) $linea['precio_unitario']) ?>
+                                        </span>
+                                    </div>
+                                    <strong class="text-sm text-[#142943]"><?= formatoPrecio((float) $linea['subtotal']) ?></strong>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold text-slate-500">Estado:</span>
+                            <?= renderizarEstadoPedido($estadoDetalle) ?>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs text-slate-500">
+                                Subtotal: <?= formatoPrecio((float) $pedidoEnDetalle['subtotal_libros']) ?> ·
+                                Envío: <?= (float) $pedidoEnDetalle['gastos_envio'] === 0.0 ? 'Gratis' : formatoPrecio((float) $pedidoEnDetalle['gastos_envio']) ?>
+                            </span>
+                            <strong class="block text-lg text-[#142943]">
+                                Total: <?= formatoPrecio((float) $pedidoEnDetalle['total']) ?>
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                        <?php if (!empty($transicionesDetalle)): ?>
+                            <form method="post" action="administracion.php?seccion=pedidos" class="flex items-center gap-2 m-0">
+                                <?= campoCSRF() ?>
+                                <input type="hidden" name="accion" value="actualizar_estado_pedido" />
+                                <input type="hidden" name="pedido_id" value="<?= (int) $pedidoEnDetalle['id'] ?>" />
+                                <input type="hidden" name="mantener_detalle" value="1" />
+                                <select name="nuevo_estado" class="input h-10 w-auto py-1 text-xs font-semibold">
+                                    <?php foreach ($transicionesDetalle as $sigEst): ?>
+                                        <option value="<?= e($sigEst) ?>">Cambiar estado a: <?= e($sigEst) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button type="submit" class="btn-primary min-h-0 h-10 px-4 py-2 text-xs">
+                                    Actualizar estado
+                                </button>
+                            </form>
+                        <?php else: ?>
+                            <span class="text-xs font-semibold text-slate-400">
+                                Este pedido se encuentra en estado final («<?= e($estadoDetalle) ?>») y no admite más cambios.
+                            </span>
+                        <?php endif; ?>
+
+                        <a href="administracion.php?seccion=pedidos" class="btn-secondary min-h-0 h-10 px-4 py-2 text-xs">
+                            Cerrar
+                        </a>
+                    </div>
+                </div>
+            </div>
         <?php endif; ?>
 
         <!-- ==================================================================
@@ -551,7 +837,6 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                     </div>
 
                     <div class="mt-5 grid gap-5 md:grid-cols-[150px_1fr]">
-                        <!-- Vista previa en vivo de la portada -->
                         <div class="flex flex-col items-center">
                             <span class="meta mb-2">Vista previa</span>
                             <div
@@ -575,7 +860,6 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                             </div>
                         </div>
 
-                        <!-- Campos principales -->
                         <div class="grid gap-4 sm:grid-cols-2">
                             <label class="field-label sm:col-span-2">
                                 Título *

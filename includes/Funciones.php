@@ -23,6 +23,54 @@ function formatoPrecio(float|int|string $valor): string
 }
 
 /**
+ * Formatea una fecha SQL en español al estilo del diseño de Figma Make.
+ */
+function formatoFechaEspanol(?string $fechaSql, bool $formatoCorto = false): string
+{
+    $ts = $fechaSql !== null && $fechaSql !== '' ? strtotime($fechaSql) : time();
+    if ($ts === false) {
+        $ts = time();
+    }
+
+    $mesesLargos = [
+        1  => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril',
+        5  => 'mayo', 6 => 'junio', 7 => 'julio', 8 => 'agosto',
+        9  => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre',
+    ];
+    $mesesCortos = [
+        1  => 'ene', 2 => 'feb', 3 => 'mar', 4 => 'abr',
+        5  => 'may', 6 => 'jun', 7 => 'jul', 8 => 'ago',
+        9  => 'sep', 10 => 'oct', 11 => 'nov', 12 => 'dic',
+    ];
+
+    $dia  = date('d', $ts);
+    $mes  = (int) date('n', $ts);
+    $anio = date('Y', $ts);
+
+    if ($formatoCorto) {
+        return sprintf('%s %s %s', $dia, $mesesCortos[$mes] ?? 'ene', $anio);
+    }
+
+    return sprintf('%d de %s de %s', (int) $dia, $mesesLargos[$mes] ?? 'enero', $anio);
+}
+
+/**
+ * Renderiza la etiqueta visual del estado de un pedido diferenciando:
+ * Pendiente, Enviado, Entregado y Cancelado.
+ */
+function renderizarEstadoPedido(string $estado): string
+{
+    $clases = match ($estado) {
+        'Enviado'   => 'status sent',
+        'Entregado' => 'status delivered',
+        'Cancelado' => 'status cancelled',
+        default     => 'status',
+    };
+
+    return '<em class="' . $clases . '">' . e($estado) . '</em>';
+}
+
+/**
  * Renderiza cualquiera de los iconos SVG vectoriales del diseño original de Figma Make.
  */
 function icono(string $nombre, int $tamano = 20, bool $relleno = false): string
@@ -79,8 +127,6 @@ function renderizarLogo(string $urlInicio = 'index.php'): string
 
 /**
  * Renderiza la portada de un libro reproduciendo el componente <Cover /> de Figma Make.
- * Si el producto tiene una imagen personalizada (subida o URL), la muestra con el lomo editorial;
- * de lo contrario, muestra la cubierta editorial vectorial con sus colores y sello tipográfico.
  *
  * @param array<string, mixed> $producto
  */
@@ -147,8 +193,8 @@ function renderizarPortada(array $producto, string $clasesExtra = '', string $ru
  */
 function renderizarValoracion(float|int|string $valor): string
 {
-    $puntuacion  = round((float) $valor, 1);
-    $redondeado  = (int) round($puntuacion);
+    $puntuacion    = round((float) $valor, 1);
+    $redondeado    = (int) round($puntuacion);
     $estrellasHtml = '';
 
     for ($n = 1; $n <= 5; $n++) {
@@ -164,7 +210,8 @@ function renderizarValoracion(float|int|string $valor): string
 }
 
 /**
- * Renderiza la tarjeta de un libro idéntica a <ProductCard /> de Figma Make.
+ * Renderiza la tarjeta de un libro idéntica a <ProductCard /> de Figma Make,
+ * con formulario POST protegido con CSRF para añadir directamente al carrito.
  *
  * @param array<string, mixed> $producto
  */
@@ -176,10 +223,41 @@ function renderizarTarjetaProducto(array $producto, string $rutaBase = ''): stri
     $categoria   = e($producto['categoria_nombre'] ?? 'Catálogo');
     $precioTexto = formatoPrecio((float) ($producto['precio'] ?? 0));
     $valoracion  = (float) ($producto['valoracion'] ?? 4.8);
+    $stock       = (int) ($producto['stock'] ?? 0);
     $urlDetalle  = e($rutaBase . 'paginas/detalle.php?id=' . $id);
+    $urlCarrito  = e($rutaBase . 'paginas/carrito.php');
     $portadaHtml = renderizarPortada($producto, 'h-full aspect-[.68]', $rutaBase);
     $ratingHtml  = renderizarValoracion($valoracion);
     $iconoCarro  = icono('cart', 17);
+    $csrfHtml    = function_exists('campoCSRF') ? campoCSRF() : '';
+
+    if ($stock > 0) {
+        $botonAccion = <<<HTML
+        <form method="post" action="{$urlCarrito}" class="m-0">
+            {$csrfHtml}
+            <input type="hidden" name="accion" value="agregar" />
+            <input type="hidden" name="producto_id" value="{$id}" />
+            <input type="hidden" name="cantidad" value="1" />
+            <button
+                type="submit"
+                class="grid h-9 w-9 place-items-center rounded-lg bg-[#1760DC] text-white transition hover:bg-[#114fb9]"
+                aria-label="Añadir {$titulo}"
+                title="Añadir «{$titulo}» al carrito"
+            >
+                {$iconoCarro}
+            </button>
+        </form>
+HTML;
+    } else {
+        $botonAccion = <<<HTML
+        <span
+            class="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-400"
+            title="Sin stock disponible"
+        >
+            Agotado
+        </span>
+HTML;
+    }
 
     return <<<HTML
     <article class="group flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-slate-200/70">
@@ -201,9 +279,7 @@ function renderizarTarjetaProducto(array $producto, string $rutaBase = ''): stri
             </div>
             <div class="mt-auto flex items-end justify-between gap-3 pt-4">
                 <strong class="text-lg text-[#142943]">{$precioTexto}</strong>
-                <a href="{$urlDetalle}" class="grid h-9 w-9 place-items-center rounded-lg bg-[#1760DC] text-white transition hover:bg-[#114fb9]" aria-label="Ver {$titulo}" title="Ver ficha de {$titulo}">
-                    {$iconoCarro}
-                </a>
+                {$botonAccion}
             </div>
         </div>
     </article>
