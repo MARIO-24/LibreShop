@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Gestión completa de sesiones PHP, autenticación, control de acceso por roles (RBAC),
- * mensajes flash y protección contra CSRF y Session Fixation.
+ * mensajes flash y protección contra CSRF, Open Redirect y Session Fixation.
  */
 if (session_status() === PHP_SESSION_NONE) {
     $esHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
@@ -59,6 +59,41 @@ function verificarCSRF(?string $tokenEnviado): bool
     }
 
     return hash_equals((string) $_SESSION['csrf_token'], $tokenEnviado);
+}
+
+/**
+ * Comprueba que una URL de retorno sea estrictamente una ruta interna segura
+ * dentro del mismo servidor, impidiendo redirecciones abiertas (Open Redirect)
+ * hacia dominios externos o esquemas peligrosos.
+ */
+function esUrlInternaSegura(string $url): bool
+{
+    $url = trim($url);
+    if ($url === '') {
+        return false;
+    }
+
+    // Rechazar saltos de línea (prevención de HTTP Header Injection)
+    if (preg_match('/[\r\n]/', $url)) {
+        return false;
+    }
+
+    // Debe comenzar por '/' simple, nunca por '//' ni '/\'
+    if (!str_starts_with($url, '/') || str_starts_with($url, '//') || str_starts_with($url, '/\\')) {
+        return false;
+    }
+
+    $partes = parse_url($url);
+    if ($partes === false) {
+        return false;
+    }
+
+    // No debe contener esquema (http, https, javascript) ni host
+    if (isset($partes['scheme']) || isset($partes['host']) || isset($partes['user']) || isset($partes['pass'])) {
+        return false;
+    }
+
+    return true;
 }
 
 /**
@@ -176,13 +211,14 @@ function esAdministrador(): bool
 
 /**
  * Protege una página privada exigiendo que el usuario haya iniciado sesión.
- * Si no está autenticado, guarda la URL solicitada y redirige al login.
+ * Si no está autenticado, guarda la URL solicitada (si es interna y segura) y redirige al login.
  */
 function requerirAutenticacion(string $urlLogin = 'login.php'): void
 {
     if (!estaAutenticado()) {
-        if (!empty($_SERVER['REQUEST_URI'])) {
-            $_SESSION['url_retorno'] = (string) $_SERVER['REQUEST_URI'];
+        $uriSolicitada = (string) ($_SERVER['REQUEST_URI'] ?? '');
+        if (esUrlInternaSegura($uriSolicitada)) {
+            $_SESSION['url_retorno'] = $uriSolicitada;
         }
         establecerFlash('info', 'Inicia sesión con tu cuenta para acceder a esta página.');
         header('Location: ' . $urlLogin);
@@ -198,8 +234,9 @@ function requerirAutenticacion(string $urlLogin = 'login.php'): void
 function requerirAdministrador(string $urlLogin = 'login.php', string $urlInicio = '../index.php'): void
 {
     if (!estaAutenticado()) {
-        if (!empty($_SERVER['REQUEST_URI'])) {
-            $_SESSION['url_retorno'] = (string) $_SERVER['REQUEST_URI'];
+        $uriSolicitada = (string) ($_SERVER['REQUEST_URI'] ?? '');
+        if (esUrlInternaSegura($uriSolicitada)) {
+            $_SESSION['url_retorno'] = $uriSolicitada;
         }
         establecerFlash('error', 'Debes iniciar sesión como administrador para acceder al panel de gestión.');
         header('Location: ' . $urlLogin);

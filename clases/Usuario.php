@@ -77,12 +77,10 @@ class Usuario
         $password       = (string) ($datos['password'] ?? '');
         $confirmacion   = (string) ($datos['confirm'] ?? $datos['password_confirm'] ?? '');
 
-        // Si el formulario de diseño original envía "Nombre completo" en un solo campo,
-        // separamos nombre y apellidos automáticamente si no se enviaron apellidos por separado.
         if ($apellidosInput === '' && str_contains($nombreInput, ' ')) {
-            $partes         = preg_split('/\s+/', $nombreInput, 2);
-            $nombre         = trim((string) ($partes[0] ?? ''));
-            $apellidos      = trim((string) ($partes[1] ?? ''));
+            $partes    = preg_split('/\s+/', $nombreInput, 2);
+            $nombre    = trim((string) ($partes[0] ?? ''));
+            $apellidos = trim((string) ($partes[1] ?? ''));
         } else {
             $nombre    = $nombreInput;
             $apellidos = $apellidosInput;
@@ -174,7 +172,6 @@ class Usuario
             throw new InvalidArgumentException('Correo electrónico o contraseña incorrectos.');
         }
 
-        // Si el algoritmo por defecto de PHP se actualiza, re-hashea de forma transparente
         if (password_needs_rehash((string) $usuario['password'], PASSWORD_DEFAULT)) {
             $nuevoHash = password_hash($password, PASSWORD_DEFAULT);
             $stmtUpd   = $this->db->prepare('UPDATE usuarios SET password = :password WHERE id = :id');
@@ -190,9 +187,14 @@ class Usuario
     }
 
     /**
-     * Asegura que las cuentas de demostración académicas (administrador y cliente)
-     * tengan contraseñas válidas generadas con password_hash().
+     * Proceso de inicialización controlado e idempotente para las cuentas de demostración.
      *
+     * Seguridad:
+     * - NUNCA se ejecuta durante el flujo de inicio de sesión.
+     * - NUNCA sobrescribe contraseñas, roles, nombres ni apellidos de cuentas ya existentes.
+     * - Únicamente inserta una cuenta si su email aún no existe en la tabla `usuarios`.
+     *
+     * Cuentas iniciales para evaluación académica:
      * - Admin:   admin@libreshop.es  / Admin1234!
      * - Cliente: marina@libreshop.es / Cliente1234!
      */
@@ -200,40 +202,36 @@ class Usuario
     {
         $cuentas = [
             [
-                'id'        => 1,
-                'nombre'    => 'Administrador',
-                'apellidos' => 'LibreShop',
-                'email'     => 'admin@libreshop.es',
-                'password'  => password_hash('Admin1234!', PASSWORD_DEFAULT),
-                'rol'       => 'administrador',
+                'nombre'         => 'Administrador',
+                'apellidos'      => 'LibreShop',
+                'email'          => 'admin@libreshop.es',
+                'password_plana' => 'Admin1234!',
+                'rol'            => 'administrador',
             ],
             [
-                'id'        => 2,
-                'nombre'    => 'Marina',
-                'apellidos' => 'García López',
-                'email'     => 'marina@libreshop.es',
-                'password'  => password_hash('Cliente1234!', PASSWORD_DEFAULT),
-                'rol'       => 'cliente',
+                'nombre'         => 'Marina',
+                'apellidos'      => 'García López',
+                'email'          => 'marina@libreshop.es',
+                'password_plana' => 'Cliente1234!',
+                'rol'            => 'cliente',
             ],
         ];
 
-        $stmt = $this->db->prepare(
-            'INSERT INTO usuarios (id, nombre, apellidos, email, password, rol)
-             VALUES (:id, :nombre, :apellidos, :email, :password, :rol)
-             ON DUPLICATE KEY UPDATE
-                nombre    = VALUES(nombre),
-                apellidos = VALUES(apellidos),
-                password  = VALUES(password),
-                rol       = VALUES(rol)'
+        $stmtInsert = $this->db->prepare(
+            'INSERT IGNORE INTO usuarios (nombre, apellidos, email, password, rol)
+             VALUES (:nombre, :apellidos, :email, :password, :rol)'
         );
 
         foreach ($cuentas as $cuenta) {
-            $stmt->execute([
-                ':id'        => $cuenta['id'],
+            if ($this->existeEmail($cuenta['email'])) {
+                continue;
+            }
+
+            $stmtInsert->execute([
                 ':nombre'    => $cuenta['nombre'],
                 ':apellidos' => $cuenta['apellidos'],
                 ':email'     => $cuenta['email'],
-                ':password'  => $cuenta['password'],
+                ':password'  => password_hash($cuenta['password_plana'], PASSWORD_DEFAULT),
                 ':rol'       => $cuenta['rol'],
             ]);
         }

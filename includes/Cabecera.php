@@ -73,12 +73,15 @@ $flash = $mostrarHeader ? obtenerFlash() : null;
                     <?php endif; ?>
                 </a>
                 <?php if ($nombreCorto): ?>
-                    <a
-                        href="<?= e($rutaBase) ?>logout.php"
-                        class="hidden text-xs font-semibold text-slate-400 hover:text-slate-700 lg:block no-underline"
-                    >
-                        Salir
-                    </a>
+                    <form method="post" action="<?= e($rutaBase) ?>logout.php" class="hidden lg:block m-0">
+                        <?= campoCSRF() ?>
+                        <button
+                            type="submit"
+                            class="text-xs font-semibold text-slate-400 hover:text-slate-700"
+                        >
+                            Salir
+                        </button>
+                    </form>
                 <?php endif; ?>
                 <a
                     href="<?= e($rutaBase) ?>paginas/carrito.php"
@@ -112,7 +115,15 @@ $flash = $mostrarHeader ? obtenerFlash() : null;
                 <a href="<?= e($rutaBase) ?>paginas/administracion.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-[#1760DC] no-underline">Administración</a>
             <?php endif; ?>
             <?php if ($nombreCorto): ?>
-                <a href="<?= e($rutaBase) ?>logout.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-red-600 no-underline">Cerrar sesión (<?= e($nombreCorto) ?>)</a>
+                <form method="post" action="<?= e($rutaBase) ?>logout.php" class="m-0">
+                    <?= campoCSRF() ?>
+                    <button
+                        type="submit"
+                        class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-red-600"
+                    >
+                        Cerrar sesión (<?= e($nombreCorto) ?>)
+                    </button>
+                </form>
             <?php else: ?>
                 <a href="<?= e($rutaBase) ?>paginas/login.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-[#1760DC] no-underline">Iniciar sesión</a>
             <?php endif; ?>

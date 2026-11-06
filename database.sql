@@ -365,16 +365,12 @@ ON DUPLICATE KEY UPDATE
   `destacado` = VALUES(`destacado`);
 
 -- ============================================================================
--- DATOS INICIALES: USUARIOS DE PRUEBA
--- (Preparados en esquema para integridad referencial; la autenticación se
---  activará en la FASE 2).
+-- DATOS INICIALES: USUARIOS DE PRUEBA (Idempotente con INSERT IGNORE:
+-- nunca sobrescribe contraseñas, roles ni nombres de cuentas ya existentes)
 --  Admin:   admin@libreshop.es   / Admin1234!
 --  Cliente: marina@libreshop.es  / Cliente1234!
 -- ============================================================================
-INSERT INTO `usuarios` (`id`, `nombre`, `apellidos`, `email`, `password`, `rol`) VALUES
-  (1, 'Administrador', 'LibreShop', 'admin@libreshop.es', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'administrador'),
-  (2, 'Marina', 'García López', 'marina@libreshop.es', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'cliente')
-ON DUPLICATE KEY UPDATE
-  `nombre` = VALUES(`nombre`),
-  `apellidos` = VALUES(`apellidos`),
-  `rol` = VALUES(`rol`);
+INSERT IGNORE INTO `usuarios` (`id`, `nombre`, `apellidos`, `email`, `password`, `rol`) VALUES
+  (1, 'Administrador', 'LibreShop', 'admin@libreshop.es', '$2y$10$vu.DA1Q4l5DIhjSJ1p.cCuy79b7xxrO7Gs.f5u5sbHVfzp9FfWdIi', 'administrador'),
+  (2, 'Marina', 'García López', 'marina@libreshop.es', '$2y$10$dz4w.UezJpIKsvdwEsgBfeHIzsWVdjNTH/okTguKP1hC0eWHfp4gy', 'cliente');
+

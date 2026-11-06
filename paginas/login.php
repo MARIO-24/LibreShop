@@ -24,19 +24,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $errores[] = 'La sesión del formulario ha caducado. Por favor, inténtalo de nuevo.';
     } else {
         try {
-            // Aseguramos que las dos cuentas de demostración del examen tengan su hash activo
-            $gestorUsuarios->asegurarCuentasDemo();
-
             $usuario = $gestorUsuarios->autenticar($emailPrevio, $password);
             iniciarSesionUsuario($usuario);
 
             establecerFlash('exito', '¡Bienvenido de nuevo, ' . $usuario['nombre'] . '!');
 
-            // Redirección segura si venía de una página privada protegida
+            // Redirección interna segura si venía de una página privada protegida
             $urlRetorno = (string) ($_SESSION['url_retorno'] ?? '');
             unset($_SESSION['url_retorno']);
 
-            if ($urlRetorno !== '' && str_starts_with($urlRetorno, '/') && !str_starts_with($urlRetorno, '//')) {
+            if (
+                esUrlInternaSegura($urlRetorno)
+                && ($usuario['rol'] === 'administrador' || !str_contains($urlRetorno, 'administracion.php'))
+            ) {
                 header('Location: ' . $urlRetorno);
                 exit;
             }
