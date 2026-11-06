@@ -1,0 +1,211 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Funciones auxiliares de interfaz, formato y seguridad XSS para LibreShop.
+ * Reproducen fielmente los componentes visuales originales de Figma Make.
+ */
+
+/**
+ * Escapa texto de forma segura para prevenir ataques XSS en salidas HTML.
+ */
+function e(mixed $valor): string
+{
+    return htmlspecialchars((string) ($valor ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+/**
+ * Formatea una cantidad numérica en euros con coma decimal (ej. "19,90 €").
+ */
+function formatoPrecio(float|int|string $valor): string
+{
+    return number_format((float) $valor, 2, ',', '.') . ' €';
+}
+
+/**
+ * Renderiza cualquiera de los iconos SVG vectoriales del diseño original de Figma Make.
+ */
+function icono(string $nombre, int $tamano = 20, bool $relleno = false): string
+{
+    $trazos = [
+        'search'  => '<circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />',
+        'cart'    => '<path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L20 8H7" /><circle cx="10" cy="20" r="1" /><circle cx="17" cy="20" r="1" />',
+        'user'    => '<circle cx="12" cy="8" r="4" /><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" />',
+        'chevron' => '<path d="m9 18 6-6-6-6" />',
+        'arrow'   => '<path d="M5 12h14" /><path d="m13 6 6 6-6 6" />',
+        'back'    => '<path d="M19 12H5" /><path d="m11 18-6-6 6-6" />',
+        'star'    => '<path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3.1-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9z" />',
+        'trash'   => '<path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7m4 4v6m4-6v6" />',
+        'check'   => '<path d="m5 12 4 4L19 6" />',
+        'menu'    => '<path d="M4 7h16M4 12h16M4 17h16" />',
+        'close'   => '<path d="m6 6 12 12M18 6 6 18" />',
+        'edit'    => '<path d="m4 20 4.2-1 10.7-10.7a2 2 0 0 0-2.8-2.8L5.4 16.2 4 20Z" /><path d="m14.5 7.1 2.8 2.8" />',
+        'plus'    => '<path d="M12 5v14M5 12h14" />',
+        'box'     => '<path d="m4 7 8-4 8 4-8 4-8-4Z" /><path d="m4 7 0 10 8 4 8-4V7M12 11v10" />',
+        'upload'  => '<path d="M12 16V4m-4 4 4-4 4 4" /><path d="M5 15v5h14v-5" />',
+    ];
+
+    $contenido = $trazos[$nombre] ?? '';
+    $fill      = $relleno ? 'currentColor' : 'none';
+
+    return sprintf(
+        '<svg width="%d" height="%d" viewBox="0 0 24 24" fill="%s" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">%s</svg>',
+        $tamano,
+        $tamano,
+        $fill,
+        $contenido
+    );
+}
+
+/**
+ * Renderiza el logotipo oficial de LibreShop idéntico al componente <Logo /> de Figma Make.
+ */
+function renderizarLogo(string $urlInicio = 'index.php'): string
+{
+    return sprintf(
+        '<a href="%s" class="flex items-center gap-2.5 text-left no-underline">
+            <span class="relative grid h-9 w-9 place-items-center rounded-lg bg-[#1760DC] text-white shadow-sm">
+                <span class="absolute h-4 w-[2px] bg-white/60"></span>
+                <span class="h-5 w-4 rounded-l-sm border-2 border-white border-r-0"></span>
+                <span class="h-5 w-4 rounded-r-sm border-2 border-white border-l-0"></span>
+            </span>
+            <span class="text-[21px] font-bold tracking-[-.04em] text-[#142943]">
+                Libre<span class="text-[#1760DC]">Shop</span>
+            </span>
+        </a>',
+        e($urlInicio)
+    );
+}
+
+/**
+ * Renderiza la portada de un libro reproduciendo el componente <Cover /> de Figma Make.
+ * Si el producto tiene una imagen personalizada (subida o URL), la muestra con el lomo editorial;
+ * de lo contrario, muestra la cubierta editorial vectorial con sus colores y sello tipográfico.
+ *
+ * @param array<string, mixed> $producto
+ */
+function renderizarPortada(array $producto, string $clasesExtra = '', string $rutaBase = ''): string
+{
+    $color1 = e($producto['color_primario'] ?? '#0d223c');
+    $color2 = e($producto['color_secundario'] ?? '#d89d4a');
+    $autor  = e($producto['autor'] ?? 'LibreShop');
+    $sello  = e($producto['sello_editorial'] ?? 'LIBRO');
+    $titulo = e($producto['titulo'] ?? 'Libro');
+    $imagen = trim((string) ($producto['imagen'] ?? ''));
+
+    $urlImagen = '';
+    if ($imagen !== '') {
+        if (preg_match('#^https?://#i', $imagen)) {
+            $urlImagen = $imagen;
+        } else {
+            $urlImagen = $rutaBase . ltrim($imagen, '/');
+        }
+    }
+
+    if ($urlImagen !== '') {
+        return sprintf(
+            '<div class="book-cover relative isolate overflow-hidden rounded-[3px] shadow-[8px_10px_22px_rgba(15,31,52,.22)] %s" style="background: linear-gradient(145deg, %s, %s)">
+                <img src="%s" alt="Portada de %s" class="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                <div class="absolute inset-y-0 left-0 w-[7%%] bg-black/25"></div>
+                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent p-2.5 text-white">
+                    <span class="block text-[7px] font-semibold uppercase tracking-[.18em] opacity-90">%s</span>
+                    <strong class="block truncate text-xs font-bold leading-tight">%s</strong>
+                </div>
+            </div>',
+            e($clasesExtra),
+            $color1,
+            $color2,
+            e($urlImagen),
+            $titulo,
+            $autor,
+            $sello
+        );
+    }
+
+    return sprintf(
+        '<div class="book-cover relative isolate overflow-hidden rounded-[3px] shadow-[8px_10px_22px_rgba(15,31,52,.22)] %s" style="background: linear-gradient(145deg, %s, %s)">
+            <div class="absolute inset-y-0 left-0 w-[7%%] bg-black/15"></div>
+            <div class="absolute -right-8 top-[14%%] h-28 w-28 rounded-full border border-white/35"></div>
+            <div class="absolute -right-3 top-[22%%] h-16 w-16 rounded-full border border-white/20"></div>
+            <div class="relative flex h-full flex-col px-[13%%] py-[14%%] text-white">
+                <span class="text-[8px] font-semibold uppercase tracking-[.22em] opacity-80">%s</span>
+                <strong class="mt-auto max-w-[90%%] text-[clamp(15px,2vw,24px)] font-bold leading-[.94] tracking-[-.06em]">%s</strong>
+                <span class="mt-2 h-px w-7 bg-white/70"></span>
+                <span class="mt-2 text-[7px] uppercase tracking-[.2em] opacity-80">LibreShop editorial</span>
+            </div>
+        </div>',
+        e($clasesExtra),
+        $color1,
+        $color2,
+        $autor,
+        $sello
+    );
+}
+
+/**
+ * Renderiza el bloque de estrellas de valoración idéntico a <Rating /> de Figma Make.
+ */
+function renderizarValoracion(float|int|string $valor): string
+{
+    $puntuacion  = round((float) $valor, 1);
+    $redondeado  = (int) round($puntuacion);
+    $estrellasHtml = '';
+
+    for ($n = 1; $n <= 5; $n++) {
+        $estrellasHtml .= icono('star', 14, $n <= $redondeado);
+    }
+
+    return sprintf(
+        '<div class="flex items-center gap-1 text-amber-400" aria-label="%s de 5">%s<span class="ml-1 text-xs font-semibold text-slate-500">%s</span></div>',
+        e((string) $puntuacion),
+        $estrellasHtml,
+        e((string) $puntuacion)
+    );
+}
+
+/**
+ * Renderiza la tarjeta de un libro idéntica a <ProductCard /> de Figma Make.
+ *
+ * @param array<string, mixed> $producto
+ */
+function renderizarTarjetaProducto(array $producto, string $rutaBase = ''): string
+{
+    $id          = (int) ($producto['id'] ?? 0);
+    $titulo      = e($producto['titulo'] ?? '');
+    $autor       = e($producto['autor'] ?? '');
+    $categoria   = e($producto['categoria_nombre'] ?? 'Catálogo');
+    $precioTexto = formatoPrecio((float) ($producto['precio'] ?? 0));
+    $valoracion  = (float) ($producto['valoracion'] ?? 4.8);
+    $urlDetalle  = e($rutaBase . 'paginas/detalle.php?id=' . $id);
+    $portadaHtml = renderizarPortada($producto, 'h-full aspect-[.68]', $rutaBase);
+    $ratingHtml  = renderizarValoracion($valoracion);
+    $iconoCarro  = icono('cart', 17);
+
+    return <<<HTML
+    <article class="group flex h-full flex-col rounded-xl border border-slate-200 bg-white p-4 transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-slate-200/70">
+        <a href="{$urlDetalle}" class="grid aspect-[4/3] place-items-center rounded-lg bg-[#f3f5f7] p-4 no-underline">
+            {$portadaHtml}
+        </a>
+        <div class="flex flex-1 flex-col pt-4">
+            <span class="mb-1 text-[10px] font-bold uppercase tracking-[.14em] text-[#1760DC]">
+                {$categoria}
+            </span>
+            <a href="{$urlDetalle}" class="text-left no-underline">
+                <h3 class="line-clamp-1 font-bold tracking-[-.02em] text-[#142943] group-hover:text-[#1760DC]">
+                    {$titulo}
+                </h3>
+            </a>
+            <p class="mt-0.5 text-sm text-slate-500">{$autor}</p>
+            <div class="mt-2">
+                {$ratingHtml}
+            </div>
+            <div class="mt-auto flex items-end justify-between gap-3 pt-4">
+                <strong class="text-lg text-[#142943]">{$precioTexto}</strong>
+                <a href="{$urlDetalle}" class="grid h-9 w-9 place-items-center rounded-lg bg-[#1760DC] text-white transition hover:bg-[#114fb9]" aria-label="Ver {$titulo}" title="Ver ficha de {$titulo}">
+                    {$iconoCarro}
+                </a>
+            </div>
+        </div>
+    </article>
+HTML;
+}
