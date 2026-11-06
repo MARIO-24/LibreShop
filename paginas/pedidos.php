@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../includes/Sesiones.php';
+requerirAutenticacion('login.php');
+
 $rutaBase     = '../';
 $paginaActual = 'pedidos';
 $tituloPagina = 'Mis pedidos — LibreShop';
@@ -23,3 +26,4 @@ require_once __DIR__ . '/../includes/Cabecera.php';
 </main>
 
 <?php require_once __DIR__ . '/../includes/Footer.php'; ?>
+

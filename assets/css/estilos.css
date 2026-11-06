@@ -375,7 +375,8 @@ table td {
   font-size: 0.8rem;
 }
 
-footer .text-\[\#142943\] {
+footer .text-\[\#142943\],
+.bg-\[\#142943\] .text-\[\#142943\] {
   color: #ffffff;
 }
 
@@ -858,3 +859,4 @@ footer .text-\[\#142943\] {
     font-size: 14px;
   }
 }
+

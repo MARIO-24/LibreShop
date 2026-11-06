@@ -16,12 +16,13 @@ if (!empty($_SESSION['carrito']) && is_array($_SESSION['carrito'])) {
     }
 }
 
-$usuarioSesion = $_SESSION['usuario'] ?? null;
+$usuarioSesion = obtenerUsuarioActual();
 $nombreCorto   = is_array($usuarioSesion) && !empty($usuarioSesion['nombre'])
     ? explode(' ', trim((string) $usuarioSesion['nombre']))[0]
     : null;
+$esAdmin       = esAdministrador();
 
-$flash = obtenerFlash();
+$flash = $mostrarHeader ? obtenerFlash() : null;
 ?>
 <!doctype html>
 <html lang="es">
@@ -48,21 +49,28 @@ $flash = obtenerFlash();
                 <a href="<?= e($rutaBase) ?>paginas/catalogo.php" class="nav-link <?= $paginaActual === 'catalogo' ? 'text-[#1760DC]' : '' ?>">
                     Categorías
                 </a>
-                <a href="<?= e($rutaBase) ?>paginas/pedidos.php" class="nav-link <?= $paginaActual === 'pedidos' ? 'text-[#1760DC]' : '' ?>">
+                <a href="<?= e($rutaBase) ?><?= $nombreCorto ? 'paginas/pedidos.php' : 'paginas/login.php' ?>" class="nav-link <?= $paginaActual === 'pedidos' ? 'text-[#1760DC]' : '' ?>">
                     Mis pedidos
                 </a>
-                <a href="<?= e($rutaBase) ?>paginas/administracion.php" class="nav-link hidden lg:block <?= $paginaActual === 'administracion' ? 'text-[#1760DC]' : '' ?>">
-                    Administración
-                </a>
+                <?php if ($esAdmin): ?>
+                    <a href="<?= e($rutaBase) ?>paginas/administracion.php" class="nav-link hidden lg:block <?= $paginaActual === 'administracion' ? 'text-[#1760DC]' : '' ?>">
+                        Administración
+                    </a>
+                <?php endif; ?>
             </nav>
             <div class="flex items-center gap-1 sm:gap-3">
                 <a
-                    href="<?= e($rutaBase) ?><?= $nombreCorto ? 'paginas/pedidos.php' : 'paginas/login.php' ?>"
+                    href="<?= e($rutaBase) ?><?= $nombreCorto ? ($esAdmin ? 'paginas/administracion.php' : 'paginas/pedidos.php') : 'paginas/login.php' ?>"
                     class="header-action no-underline"
                     aria-label="Cuenta"
                 >
                     <?= icono('user', 21) ?>
                     <span class="hidden lg:inline"><?= $nombreCorto ? e($nombreCorto) : 'Iniciar sesión' ?></span>
+                    <?php if ($esAdmin): ?>
+                        <span class="hidden rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase text-[#1760DC] lg:inline">
+                            Admin
+                        </span>
+                    <?php endif; ?>
                 </a>
                 <?php if ($nombreCorto): ?>
                     <a
@@ -99,8 +107,15 @@ $flash = obtenerFlash();
         <nav id="nav-movil" class="hidden border-t border-slate-100 bg-white px-5 py-4 md:hidden">
             <a href="<?= e($rutaBase) ?>index.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-slate-700 no-underline">Inicio</a>
             <a href="<?= e($rutaBase) ?>paginas/catalogo.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-slate-700 no-underline">Catálogo y categorías</a>
-            <a href="<?= e($rutaBase) ?>paginas/pedidos.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-slate-700 no-underline">Mis pedidos</a>
-            <a href="<?= e($rutaBase) ?>paginas/administracion.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-slate-700 no-underline">Administración</a>
+            <a href="<?= e($rutaBase) ?><?= $nombreCorto ? 'paginas/pedidos.php' : 'paginas/login.php' ?>" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-slate-700 no-underline">Mis pedidos</a>
+            <?php if ($esAdmin): ?>
+                <a href="<?= e($rutaBase) ?>paginas/administracion.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-[#1760DC] no-underline">Administración</a>
+            <?php endif; ?>
+            <?php if ($nombreCorto): ?>
+                <a href="<?= e($rutaBase) ?>logout.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-red-600 no-underline">Cerrar sesión (<?= e($nombreCorto) ?>)</a>
+            <?php else: ?>
+                <a href="<?= e($rutaBase) ?>paginas/login.php" class="block w-full p-2.5 text-left text-[0.9rem] font-semibold text-[#1760DC] no-underline">Iniciar sesión</a>
+            <?php endif; ?>
         </nav>
     </header>
 <?php endif; ?>

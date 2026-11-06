@@ -6,6 +6,9 @@ require_once __DIR__ . '/../includes/Funciones.php';
 require_once __DIR__ . '/../clases/Categoria.php';
 require_once __DIR__ . '/../clases/Producto.php';
 
+// Protección obligatoria: acceso exclusivo para usuarios autenticados con rol 'administrador'
+requerirAdministrador('login.php', '../index.php');
+
 $gestorCategorias = new Categoria();
 $gestorProductos  = new Producto();
 
