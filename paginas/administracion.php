@@ -277,7 +277,21 @@ if (
 // Determinar si hay una categoría abierta para crear o editar
 $categoriaEnEdicion  = null;
 $abrirModalCategoria = false;
-if (isset($_GET['editar_cat'])) {
+if (
+    ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
+    && (string) ($_POST['accion'] ?? '') === 'guardar_categoria'
+    && !empty($erroresFormulario)
+) {
+    $abrirModalCategoria = true;
+    $seccionActiva       = 'categorias';
+    $categoriaEnEdicion  = [
+        'id'          => isset($_POST['categoria_id']) ? (int) $_POST['categoria_id'] : 0,
+        'nombre'      => (string) ($_POST['nombre'] ?? ''),
+        'descripcion' => (string) ($_POST['descripcion'] ?? ''),
+        'color_fondo' => (string) ($_POST['color_fondo'] ?? '#e9f1ff'),
+        'activa'      => isset($_POST['activa']) ? 1 : 0,
+    ];
+} elseif (isset($_GET['editar_cat'])) {
     $categoriaEnEdicion  = $gestorCategorias->obtenerPorId((int) $_GET['editar_cat']);
     $abrirModalCategoria = $categoriaEnEdicion !== null;
     $seccionActiva       = 'categorias';
@@ -1213,6 +1227,14 @@ require_once __DIR__ . '/../includes/Cabecera.php';
                             <?= icono('close', 20) ?>
                         </a>
                     </div>
+
+                    <?php if (!empty($erroresFormulario)): ?>
+                        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-700" role="alert">
+                            <?php foreach ($erroresFormulario as $errModalCat): ?>
+                                <p><?= e($errModalCat) ?></p>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="mt-6 grid gap-4">
                         <label class="field-label">
