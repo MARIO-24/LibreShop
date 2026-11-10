@@ -801,12 +801,12 @@ footer .text-\[\#142943\],
 .leading-6 { line-height: 1.5rem; }
 .leading-7 { line-height: 1.75rem; }
 
-.tracking-\[-.02em\] { letter-spacing: -0.02em; }
-.tracking-\[-.03em\] { letter-spacing: -0.03em; }
-.tracking-\[-.04em\] { letter-spacing: -0.04em; }
-.tracking-\[-.045em\] { letter-spacing: -0.045em; }
-.tracking-\[-.055em\] { letter-spacing: -0.055em; }
-.tracking-\[-.06em\] { letter-spacing: -0.06em; }
+.tracking-\[-\.02em\] { letter-spacing: -0.02em; }
+.tracking-\[-\.03em\] { letter-spacing: -0.03em; }
+.tracking-\[-\.04em\] { letter-spacing: -0.04em; }
+.tracking-\[-\.045em\] { letter-spacing: -0.045em; }
+.tracking-\[-\.055em\] { letter-spacing: -0.055em; }
+.tracking-\[-\.06em\] { letter-spacing: -0.06em; }
 .tracking-\[\.08em\] { letter-spacing: 0.08em; }
 .tracking-\[\.1em\] { letter-spacing: 0.1em; }
 .tracking-\[\.12em\] { letter-spacing: 0.12em; }
