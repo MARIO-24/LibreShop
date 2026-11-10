@@ -6,11 +6,10 @@ require_once __DIR__ . '/../clases/Producto.php';
 $gestorProductos = new Producto();
 $idProducto      = isset($_GET['id']) ? (int) $_GET['id'] : 1;
 
-if ($idProducto <= 0) {
-    $idProducto = 1;
+$producto = $idProducto > 0 ? $gestorProductos->obtenerPorId($idProducto, true) : null;
+if ($producto === null && !headers_sent()) {
+    http_response_code(404);
 }
-
-$producto = $gestorProductos->obtenerPorId($idProducto, true);
 $relacionados = [];
 if ($producto !== null) {
     $relacionados = $gestorProductos->obtenerRelacionados(

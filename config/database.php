@@ -106,7 +106,10 @@ class Database
             $cfg['charset']
         );
 
-        $pdoTemp = new PDO($dsnSinDb, $cfg['user'], $cfg['pass'], $opciones);
+        $opcionesTemp = $opciones;
+        $opcionesTemp[PDO::ATTR_EMULATE_PREPARES] = true;
+
+        $pdoTemp = new PDO($dsnSinDb, $cfg['user'], $cfg['pass'], $opcionesTemp);
         $rutaSql = dirname(__DIR__) . '/database.sql';
 
         if (!is_file($rutaSql)) {
@@ -116,6 +119,20 @@ class Database
         $sql = file_get_contents($rutaSql);
         if ($sql === false) {
             throw new RuntimeException('No se pudo leer el archivo database.sql.');
+        }
+
+        $nombreBd = preg_replace('/[^a-zA-Z0-9_]/', '', $cfg['dbname']) ?: 'libreshop';
+        if ($nombreBd !== 'libreshop') {
+            $sql = preg_replace(
+                '/\bCREATE\s+DATABASE\s+IF\s+NOT\s+EXISTS\s+`?libreshop`?/i',
+                'CREATE DATABASE IF NOT EXISTS `' . $nombreBd . '`',
+                $sql
+            ) ?? $sql;
+            $sql = preg_replace(
+                '/\bUSE\s+`?libreshop`?\s*;/i',
+                'USE `' . $nombreBd . '`;',
+                $sql
+            ) ?? $sql;
         }
 
         $pdoTemp->exec($sql);

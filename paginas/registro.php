@@ -6,7 +6,7 @@ require_once __DIR__ . '/../includes/Funciones.php';
 require_once __DIR__ . '/../clases/Usuario.php';
 
 if (estaAutenticado()) {
-    header('Location: ../index.php');
+    header('Location: ' . (esAdministrador() ? 'administracion.php' : '../index.php'));
     exit;
 }
 
@@ -90,7 +90,14 @@ require_once __DIR__ . '/../includes/Cabecera.php';
             </p>
 
             <?php if ($flashRegistro !== null): ?>
-                <div class="mt-5 rounded-lg border p-3 text-sm <?= $flashRegistro['tipo'] === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-blue-200 bg-blue-50 text-[#1760DC]' ?>">
+                <?php
+                $clasesFlashReg = match ($flashRegistro['tipo']) {
+                    'exito' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+                    'error' => 'border-red-200 bg-red-50 text-red-700',
+                    default => 'border-blue-200 bg-blue-50 text-[#1760DC]',
+                };
+                ?>
+                <div class="mt-5 rounded-lg border p-3 text-sm <?= $clasesFlashReg ?>" role="alert">
                     <p><?= e($flashRegistro['texto']) ?></p>
                 </div>
             <?php endif; ?>

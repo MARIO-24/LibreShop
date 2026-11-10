@@ -335,6 +335,10 @@ class Producto
      */
     public function cambiarEstado(int $id, bool $activo): bool
     {
+        if ($this->obtenerPorId($id, false) === null) {
+            throw new InvalidArgumentException('El producto indicado no existe.');
+        }
+
         $stmt = $this->db->prepare('UPDATE productos SET activo = :activo WHERE id = :id');
         return $stmt->execute([
             ':activo' => $activo ? 1 : 0,
@@ -481,8 +485,19 @@ class Producto
             throw new InvalidArgumentException('No se pudo procesar el archivo temporal subido.');
         }
 
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mime  = (string) $finfo->file($tmpName);
+        $dimensiones = @getimagesize($tmpName);
+        if ($dimensiones === false || (int) ($dimensiones[0] ?? 0) <= 0 || (int) ($dimensiones[1] ?? 0) <= 0) {
+            throw new InvalidArgumentException('El archivo subido no contiene una imagen válida.');
+        }
+
+        if (class_exists('finfo')) {
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mime  = (string) $finfo->file($tmpName);
+        } elseif (function_exists('mime_content_type')) {
+            $mime = (string) @mime_content_type($tmpName);
+        } else {
+            $mime = (string) ($dimensiones['mime'] ?? '');
+        }
 
         $mimesPermitidos = [
             'image/jpeg' => ['jpg', 'jpeg'],
@@ -496,11 +511,6 @@ class Producto
 
         if (!in_array($extensionOriginal, $mimesPermitidos[$mime], true)) {
             throw new InvalidArgumentException('La extensión del archivo no coincide con su contenido real de imagen.');
-        }
-
-        $dimensiones = @getimagesize($tmpName);
-        if ($dimensiones === false || (int) ($dimensiones[0] ?? 0) <= 0 || (int) ($dimensiones[1] ?? 0) <= 0) {
-            throw new InvalidArgumentException('El archivo subido no contiene una imagen válida.');
         }
 
         $directorioDestino = dirname(__DIR__) . '/assets/img/portadas';
@@ -580,10 +590,23 @@ class Producto
         // Generar ISBN único si se dejó en blanco
         if ($isbn === '') {
             $isbn = '978-84-' . random_int(1000, 9999) . '-' . random_int(100, 999) . '-' . random_int(0, 9);
+        } elseif (mb_strlen($isbn) > 30) {
+            throw new InvalidArgumentException('El ISBN no puede superar los 30 caracteres.');
         }
 
         if ($this->existeIsbn($isbn, $idActual)) {
             throw new InvalidArgumentException('El ISBN indicado (' . $isbn . ') ya pertenece a otro libro del catálogo.');
+        }
+
+        if ($imagen !== null) {
+            if (mb_strlen($imagen) > 255 || str_contains($imagen, '..') || preg_match('/[\x00-\x1F\x7F]/', $imagen)) {
+                throw new InvalidArgumentException('La ruta o URL de la imagen de portada no es válida.');
+            }
+            $esRutaLocalSegura = (bool) preg_match('/^assets\/img\/portadas\/[A-Za-z0-9._-]+\.(jpe?g|png|webp)$/i', $imagen);
+            $esUrlHttpSegura   = (bool) preg_match('#^https?://#i', $imagen) && filter_var($imagen, FILTER_VALIDATE_URL) !== false;
+            if (!$esRutaLocalSegura && !$esUrlHttpSegura) {
+                throw new InvalidArgumentException('La imagen de portada debe ser un archivo subido en assets/img/portadas/ o una URL HTTP/HTTPS válida.');
+            }
         }
 
         $valoracion = isset($datos['valoracion']) && is_numeric((string) $datos['valoracion'])

@@ -104,6 +104,8 @@ class Categoria
 
         if ($descripcion === '') {
             $descripcion = 'Colección temática de LibreShop';
+        } elseif (mb_strlen($descripcion) > 255) {
+            throw new InvalidArgumentException('La descripción de la categoría no debe superar los 255 caracteres.');
         }
 
         if (!preg_match('/^#[0-9a-fA-F]{6}$/', $colorFondo)) {
@@ -148,7 +150,13 @@ class Categoria
         $activa      = isset($datos['activa']) ? (int) (bool) $datos['activa'] : (int) $actual['activa'];
 
         if ($nombre === '' || mb_strlen($nombre) > 100) {
-            throw new InvalidArgumentException('El nombre de la categoría es obligatorio.');
+            throw new InvalidArgumentException('El nombre de la categoría es obligatorio y no debe superar los 100 caracteres.');
+        }
+
+        if ($descripcion === '') {
+            $descripcion = 'Colección temática de LibreShop';
+        } elseif (mb_strlen($descripcion) > 255) {
+            throw new InvalidArgumentException('La descripción de la categoría no debe superar los 255 caracteres.');
         }
 
         $existente = $this->obtenerPorNombre($nombre);
@@ -183,6 +191,10 @@ class Categoria
      */
     public function cambiarEstado(int $id, bool $activa): bool
     {
+        if ($this->obtenerPorId($id) === null) {
+            throw new InvalidArgumentException('La categoría indicada no existe.');
+        }
+
         $stmt = $this->db->prepare('UPDATE categorias SET activa = :activa WHERE id = :id');
         return $stmt->execute([
             ':activa' => $activa ? 1 : 0,
@@ -197,6 +209,10 @@ class Categoria
      */
     public function eliminar(int $id): array
     {
+        if ($this->obtenerPorId($id) === null) {
+            throw new InvalidArgumentException('La categoría indicada no existe.');
+        }
+
         $stmtCont = $this->db->prepare('SELECT COUNT(*) FROM productos WHERE categoria_id = :id');
         $stmtCont->execute([':id' => $id]);
         $totalProductos = (int) $stmtCont->fetchColumn();
